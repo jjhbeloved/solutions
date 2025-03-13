@@ -1,0 +1,70 @@
+@startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam classBackgroundColor #F8F9FA
+skinparam classBorderColor #DEE2E6
+
+interface Serializable
+interface Cloneable
+interface "Comparable<Trigger>" as Comparable
+
+interface Trigger {
+  +serialVersionUID: long
+  +getKey(): TriggerKey
+  +getJobKey(): JobKey
+  +getDescription(): String
+  +getCalendarName(): String
+  +getJobDataMap(): JobDataMap
+  +getPriority(): int
+  +mayFireAgain(): boolean
+  +getStartTime(): Date
+  +getEndTime(): Date
+  +getNextFireTime(): Date
+  +getPreviousFireTime(): Date
+  +getFireTimeAfter(afterTime: Date): Date
+  +getFinalFireTime(): Date
+  +getMisfireInstruction(): int
+  +getTriggerBuilder(): TriggerBuilder<? extends Trigger>
+  +getScheduleBuilder(): ScheduleBuilder<? extends Trigger>
+  +equals(other: Object): boolean
+  +compareTo(other: Trigger): int
+}
+
+enum TriggerState {
+  NONE
+  NORMAL
+  PAUSED
+  COMPLETE
+  ERROR
+  BLOCKED
+}
+
+enum CompletedExecutionInstruction {
+  NOOP
+  RE_EXECUTE_JOB
+  SET_TRIGGER_COMPLETE
+  DELETE_TRIGGER
+  SET_ALL_JOB_TRIGGERS_COMPLETE
+  SET_TRIGGER_ERROR
+  SET_ALL_JOB_TRIGGERS_ERROR
+}
+
+class TriggerTimeComparator {
+  +compare(t1: Trigger, t2: Trigger): int
+  +{static} compare(nextFireTime1: Date, priority1: int, key1: TriggerKey, nextFireTime2: Date, priority2: int, key2: TriggerKey): int
+}
+
+Serializable <|-- Trigger
+Cloneable <|-- Trigger
+Comparable <|-- Trigger
+
+Trigger +-- TriggerState
+Trigger +-- CompletedExecutionInstruction
+Trigger +-- TriggerTimeComparator
+
+note bottom of Trigger
+  Trigger是所有触发器的基础接口
+  定义了触发器的核心行为和属性
+end note
+@enduml 

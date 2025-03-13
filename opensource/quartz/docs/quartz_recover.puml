@@ -1,0 +1,145 @@
+@startuml
+title Quartz 集群状态管理与恢复流程
+
+participant "节点A\n(QuartzScheduler)" as A
+participant "节点A\nClusterManager" as ACM
+participant "数据库\nQRTZ_SCHEDULER_STATE" as DBSS
+participant "数据库\nQRTZ_LOCKS" as DBL
+participant "数据库\nQRTZ_TRIGGERS" as DBT
+participant "数据库\nQRTZ_FIRED_TRIGGERS" as DBFT
+participant "节点B\nClusterManager" as BCM
+participant "节点B\n(QuartzScheduler)" as B
+
+== 初始化阶段 ==
+
+A -> A: initialize()
+A -> ACM: 创建ClusterManager线程
+activate ACM
+A -> DBSS: 插入调度器状态记录\nINSERT INTO QRTZ_SCHEDULER_STATE\n(INSTANCE_NAME, LAST_CHECKIN_TIME, CHECKIN_INTERVAL)
+A -> A: schedulerStarted()
+
+B -> B: initialize()
+B -> BCM: 创建ClusterManager线程
+activate BCM
+B -> DBSS: 插入调度器状态记录\nINSERT INTO QRTZ_SCHEDULER_STATE\n(INSTANCE_NAME, LAST_CHECKIN_TIME, CHECKIN_INTERVAL)
+B -> B: schedulerStarted()
+
+== 心跳维护阶段 ==
+
+loop 每隔clusterCheckinInterval (默认7500ms)
+    ACM -> DBL: 获取LOCK_STATE_ACCESS锁\nINSERT INTO QRTZ_LOCKS\n(SCHED_NAME, LOCK_NAME)
+    ACM -> DBSS: 更新心跳时间戳\nUPDATE QRTZ_SCHEDULER_STATE\nSET LAST_CHECKIN_TIME = ?\nWHERE INSTANCE_NAME = 'instanceA'
+    ACM -> DBSS: 查询所有调度器状态\nSELECT * FROM QRTZ_SCHEDULER_STATE\nWHERE SCHED_NAME = ?
+    DBSS --> ACM: 返回所有调度器状态记录
+    
+    ACM -> ACM: 检查是否有失效节点\n(LAST_CHECKIN_TIME + CHECKIN_INTERVAL * 3 < 当前时间)
+    note right of ACM: 未发现失效节点
+    
+    ACM -> DBL: 释放LOCK_STATE_ACCESS锁\nDELETE FROM QRTZ_LOCKS\nWHERE LOCK_NAME = 'STATE_ACCESS'
+end
+
+loop 每隔clusterCheckinInterval (默认7500ms)
+    BCM -> DBL: 获取LOCK_STATE_ACCESS锁\nINSERT INTO QRTZ_LOCKS\n(SCHED_NAME, LOCK_NAME)
+    BCM -> DBSS: 更新心跳时间戳\nUPDATE QRTZ_SCHEDULER_STATE\nSET LAST_CHECKIN_TIME = ?\nWHERE INSTANCE_NAME = 'instanceB'
+    BCM -> DBSS: 查询所有调度器状态\nSELECT * FROM QRTZ_SCHEDULER_STATE\nWHERE SCHED_NAME = ?
+    DBSS --> BCM: 返回所有调度器状态记录
+    
+    BCM -> BCM: 检查是否有失效节点\n(LAST_CHECKIN_TIME + CHECKIN_INTERVAL * 3 < 当前时间)
+    note right of BCM: 未发现失效节点
+    
+    BCM -> DBL: 释放LOCK_STATE_ACCESS锁\nDELETE FROM QRTZ_LOCKS\nWHERE LOCK_NAME = 'STATE_ACCESS'
+end
+
+== 作业执行阶段 ==
+
+A -> DBL: 获取LOCK_TRIGGER_ACCESS锁
+A -> DBT: 查询可获取的触发器\nSELECT * FROM QRTZ_TRIGGERS\nWHERE TRIGGER_STATE = 'WAITING'\nAND NEXT_FIRE_TIME <= ?
+DBT --> A: 返回可获取的触发器T1
+A -> DBT: 获取触发器T1\nUPDATE QRTZ_TRIGGERS\nSET TRIGGER_STATE = 'ACQUIRED',\nINSTANCE_NAME = 'instanceA'\nWHERE TRIGGER_NAME = 'T1'
+A -> DBL: 释放LOCK_TRIGGER_ACCESS锁
+
+note over A: 触发器T1到达触发时间
+
+A -> DBL: 获取LOCK_TRIGGER_ACCESS锁
+A -> DBFT: 记录触发器执行\nINSERT INTO QRTZ_FIRED_TRIGGERS\n(ENTRY_ID, INSTANCE_NAME, TRIGGER_NAME, STATE, ...)\nVALUES (?, 'instanceA', 'T1', 'EXECUTING', ...)
+A -> DBT: 更新触发器状态\nUPDATE QRTZ_TRIGGERS\nSET TRIGGER_STATE = 'EXECUTING'\nWHERE TRIGGER_NAME = 'T1'
+A -> DBL: 释放LOCK_TRIGGER_ACCESS锁
+
+note over A: 开始执行作业J1
+
+== 节点A失效阶段 ==
+
+note over A: 节点A突然崩溃或网络中断
+destroy ACM
+destroy A
+
+== 心跳丢失检测阶段 ==
+
+loop 下一个心跳周期
+    BCM -> DBL: 获取LOCK_STATE_ACCESS锁
+    BCM -> DBSS: 更新心跳时间戳\nUPDATE QRTZ_SCHEDULER_STATE\nSET LAST_CHECKIN_TIME = ?\nWHERE INSTANCE_NAME = 'instanceB'
+    BCM -> DBSS: 查询所有调度器状态\nSELECT * FROM QRTZ_SCHEDULER_STATE\nWHERE SCHED_NAME = ?
+    DBSS --> BCM: 返回所有调度器状态记录
+    
+    BCM -> BCM: 检查是否有失效节点\n(LAST_CHECKIN_TIME + CHECKIN_INTERVAL * 3 < 当前时间)
+    note right of BCM: 发现节点A心跳超时
+    
+    == 集群恢复阶段 ==
+    
+    BCM -> DBT: 查询节点A获取的触发器\nSELECT * FROM QRTZ_TRIGGERS\nWHERE INSTANCE_NAME = 'instanceA'\nAND TRIGGER_STATE = 'ACQUIRED'
+    DBT --> BCM: 返回节点A获取的触发器
+    
+    BCM -> DBT: 重置触发器状态\nUPDATE QRTZ_TRIGGERS\nSET TRIGGER_STATE = 'WAITING',\nINSTANCE_NAME = NULL\nWHERE INSTANCE_NAME = 'instanceA'\nAND TRIGGER_STATE = 'ACQUIRED'
+    
+    BCM -> DBFT: 查询节点A正在执行的作业\nSELECT * FROM QRTZ_FIRED_TRIGGERS\nWHERE INSTANCE_NAME = 'instanceA'
+    DBFT --> BCM: 返回节点A正在执行的作业记录(包括T1/J1)
+    
+    BCM -> DBT: 查询作业J1详情\nSELECT * FROM QRTZ_JOB_DETAILS\nWHERE JOB_NAME = 'J1'
+    DBT --> BCM: 返回作业J1详情
+    
+    alt 如果J1标记为@DisallowConcurrentExecution
+        BCM -> DBT: 将J1的触发器设为BLOCKED\nUPDATE QRTZ_TRIGGERS\nSET TRIGGER_STATE = 'BLOCKED'\nWHERE JOB_NAME = 'J1'
+        BCM -> DBFT: 更新FIRED_TRIGGERS记录状态\nUPDATE QRTZ_FIRED_TRIGGERS\nSET STATE = 'ACQUIRED'\nWHERE INSTANCE_NAME = 'instanceA'
+    else 如果J1允许并发执行
+        BCM -> DBFT: 更新FIRED_TRIGGERS记录状态\nUPDATE QRTZ_FIRED_TRIGGERS\nSET STATE = 'ACQUIRED'\nWHERE INSTANCE_NAME = 'instanceA'
+    end
+    
+    BCM -> DBFT: 删除"已获取"的触发记录\nDELETE FROM QRTZ_FIRED_TRIGGERS\nWHERE INSTANCE_NAME = 'instanceA'\nAND STATE = 'ACQUIRED'
+    
+    BCM -> DBFT: 检查是否有正在执行的作业\nSELECT DISTINCT JOB_NAME, JOB_GROUP\nFROM QRTZ_FIRED_TRIGGERS
+    DBFT --> BCM: 返回结果(可能为空)
+    
+    alt 如果没有正在执行的作业
+        BCM -> DBT: 解除所有被阻塞的触发器\nUPDATE QRTZ_TRIGGERS\nSET TRIGGER_STATE = 'WAITING'\nWHERE TRIGGER_STATE = 'BLOCKED'
+    else 如果有正在执行的作业
+        BCM -> DBT: 只解除没有正在执行实例的作业的触发器
+    end
+    
+    BCM -> DBSS: 删除节点A的状态记录\nDELETE FROM QRTZ_SCHEDULER_STATE\nWHERE INSTANCE_NAME = 'instanceA'
+    
+    BCM -> DBL: 释放LOCK_STATE_ACCESS锁
+end
+
+== 恢复后的作业执行 ==
+
+B -> DBL: 获取LOCK_TRIGGER_ACCESS锁
+B -> DBT: 查询可获取的触发器\n(包括刚解除阻塞的触发器)
+DBT --> B: 返回可获取的触发器(包括T1)
+B -> DBT: 获取触发器\nUPDATE QRTZ_TRIGGERS\nSET TRIGGER_STATE = 'ACQUIRED',\nINSTANCE_NAME = 'instanceB'
+B -> DBL: 释放LOCK_TRIGGER_ACCESS锁
+
+note over B: 触发器到达触发时间
+
+B -> DBL: 获取LOCK_TRIGGER_ACCESS锁
+B -> DBFT: 触发作业\nINSERT INTO QRTZ_FIRED_TRIGGERS\n(ENTRY_ID, INSTANCE_NAME, ...)\nVALUES (?, 'instanceB', ...)
+B -> DBT: 更新触发器状态\nUPDATE QRTZ_TRIGGERS\nSET TRIGGER_STATE = 'EXECUTING'
+B -> DBL: 释放LOCK_TRIGGER_ACCESS锁
+
+note over B: 执行作业J1
+
+B -> DBL: 获取LOCK_TRIGGER_ACCESS锁
+B -> DBFT: 作业完成，删除记录\nDELETE FROM QRTZ_FIRED_TRIGGERS\nWHERE ENTRY_ID = ?
+B -> DBT: 更新触发器状态\nUPDATE QRTZ_TRIGGERS\nSET TRIGGER_STATE = 'WAITING'
+B -> DBL: 释放LOCK_TRIGGER_ACCESS锁
+
+@enduml

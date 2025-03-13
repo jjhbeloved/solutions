@@ -1,0 +1,37 @@
+@startuml
+title Quartz 触发器获取竞争机制
+
+participant "调度器A\n(机器A)" as SchedulerA
+participant "调度器B\n(机器B)" as SchedulerB
+participant "数据库\nQRTZ_TRIGGERS" as DB
+
+note over SchedulerA, SchedulerB: 两个调度器同时尝试获取触发器
+
+SchedulerA -> DB: 查询下一批待触发的触发器\nSELECT * FROM QRTZ_TRIGGERS\nWHERE TRIGGER_STATE = 'WAITING'\nAND NEXT_FIRE_TIME <= ?
+SchedulerB -> DB: 查询下一批待触发的触发器\nSELECT * FROM QRTZ_TRIGGERS\nWHERE TRIGGER_STATE = 'WAITING'\nAND NEXT_FIRE_TIME <= ?
+
+DB --> SchedulerA: 返回触发器列表(T1, T2, T3)
+DB --> SchedulerB: 返回触发器列表(T1, T2, T3)
+
+SchedulerA -> DB: 尝试获取T1\nUPDATE QRTZ_TRIGGERS\nSET TRIGGER_STATE = 'ACQUIRED',\nINSTANCE_NAME = 'instanceA'\nWHERE TRIGGER_NAME = 'T1'\nAND TRIGGER_STATE = 'WAITING'
+SchedulerB -> DB: 尝试获取T1\nUPDATE QRTZ_TRIGGERS\nSET TRIGGER_STATE = 'ACQUIRED',\nINSTANCE_NAME = 'instanceB'\nWHERE TRIGGER_NAME = 'T1'\nAND TRIGGER_STATE = 'WAITING'
+
+note over DB: 由于乐观锁，只有一个更新会成功
+
+DB --> SchedulerA: 更新成功(1行受影响)
+DB --> SchedulerB: 更新失败(0行受影响)
+
+note over SchedulerA: 成功获取T1，将执行对应的作业
+note over SchedulerB: 获取T1失败，尝试获取下一个触发器
+
+SchedulerB -> DB: 尝试获取T2\nUPDATE QRTZ_TRIGGERS\nSET TRIGGER_STATE = 'ACQUIRED',\nINSTANCE_NAME = 'instanceB'\nWHERE TRIGGER_NAME = 'T2'\nAND TRIGGER_STATE = 'WAITING'
+DB --> SchedulerB: 更新成功(1行受影响)
+
+note over SchedulerB: 成功获取T2，将执行对应的作业
+
+SchedulerA -> DB: 尝试获取T3\nUPDATE QRTZ_TRIGGERS\nSET TRIGGER_STATE = 'ACQUIRED',\nINSTANCE_NAME = 'instanceA'\nWHERE TRIGGER_NAME = 'T3'\nAND TRIGGER_STATE = 'WAITING'
+DB --> SchedulerA: 更新成功(1行受影响)
+
+note over SchedulerA: 成功获取T3，将执行对应的作业
+
+@enduml

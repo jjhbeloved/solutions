@@ -1,0 +1,58 @@
+@startuml
+title Quartz 集群故障转移机制
+
+skinparam backgroundColor white
+skinparam rectangleBorderColor #999999
+skinparam rectangleBackgroundColor #F8F8F8
+
+rectangle "机器A (宕机)" as MachineA #FFDDDD {
+    rectangle "调度器A (失效)" as SchedulerA #FFDDDD
+}
+
+rectangle "机器B (正常)" as MachineB {
+    rectangle "调度器B" as SchedulerB
+    rectangle "ClusterManager" as ClusterManagerB
+    
+    rectangle "线程池B" as ThreadPoolB
+    
+    rectangle "作业实例" as JobB1
+    rectangle "作业实例" as JobB2
+    rectangle "作业实例" as JobB3
+    rectangle "作业实例" as JobB4
+    rectangle "作业实例" as JobB5
+}
+
+database "共享数据库" {
+    rectangle "触发器T1 (WAITING)" as T1
+    rectangle "触发器T2 (WAITING)" as T2
+    rectangle "触发器T3 (WAITING)" as T3
+    
+    rectangle "QRTZ_SCHEDULER_STATE" as SchedulerState {
+        rectangle "instanceB (活跃)" as StateB
+        rectangle "instanceA (超时)" as StateA #FFDDDD
+    }
+}
+
+ClusterManagerB -[#red]-> StateA : 1. 检测到A心跳超时
+ClusterManagerB -[#red]-> T1 : 2. 重置A获取的触发器
+ClusterManagerB -[#red]-> T2 : 2. 重置A获取的触发器
+ClusterManagerB -[#red]-> T3 : 2. 重置A获取的触发器
+ClusterManagerB -[#red]-> StateA : 3. 删除A的状态记录
+
+T1 -[#green]-> SchedulerB : 4. B获取触发器
+T2 -[#green]-> SchedulerB : 4. B获取触发器
+T3 -[#green]-> SchedulerB : 4. B获取触发器
+
+SchedulerB -[#blue]-> JobB1 : 5. 执行作业
+SchedulerB -[#blue]-> JobB2 : 5. 执行作业
+SchedulerB -[#blue]-> JobB3 : 5. 执行作业
+SchedulerB -[#blue]-> JobB4 : 5. 执行作业
+SchedulerB -[#blue]-> JobB5 : 5. 执行作业
+
+JobB1 -[#blue]-> ThreadPoolB
+JobB2 -[#blue]-> ThreadPoolB
+JobB3 -[#blue]-> ThreadPoolB
+JobB4 -[#blue]-> ThreadPoolB
+JobB5 -[#blue]-> ThreadPoolB
+
+@enduml

@@ -1,0 +1,82 @@
+@startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam classBackgroundColor #F8F9FA
+skinparam classBorderColor #DEE2E6
+
+enum TriggerState {
+  NONE
+  NORMAL
+  PAUSED
+  COMPLETE
+  ERROR
+  BLOCKED
+}
+
+enum CompletedExecutionInstruction {
+  NOOP
+  RE_EXECUTE_JOB
+  SET_TRIGGER_COMPLETE
+  DELETE_TRIGGER
+  SET_ALL_JOB_TRIGGERS_COMPLETE
+  SET_TRIGGER_ERROR
+  SET_ALL_JOB_TRIGGERS_ERROR
+}
+
+class MisfireInstructions {
+  {static} MISFIRE_INSTRUCTION_SMART_POLICY = 0
+  {static} MISFIRE_INSTRUCTION_IGNORE_MISFIRE_POLICY = -1
+}
+
+class SimpleTriggerMisfireInstructions {
+  {static} MISFIRE_INSTRUCTION_FIRE_NOW = 1
+  {static} MISFIRE_INSTRUCTION_RESCHEDULE_NOW_WITH_EXISTING_REPEAT_COUNT = 2
+  {static} MISFIRE_INSTRUCTION_RESCHEDULE_NOW_WITH_REMAINING_REPEAT_COUNT = 3
+  {static} MISFIRE_INSTRUCTION_RESCHEDULE_NEXT_WITH_REMAINING_COUNT = 4
+  {static} MISFIRE_INSTRUCTION_RESCHEDULE_NEXT_WITH_EXISTING_COUNT = 5
+}
+
+class CronTriggerMisfireInstructions {
+  {static} MISFIRE_INSTRUCTION_FIRE_ONCE_NOW = 1
+  {static} MISFIRE_INSTRUCTION_DO_NOTHING = 2
+}
+
+class CalendarIntervalTriggerMisfireInstructions {
+  {static} MISFIRE_INSTRUCTION_FIRE_ONCE_NOW = 1
+  {static} MISFIRE_INSTRUCTION_DO_NOTHING = 2
+}
+
+class DailyTimeIntervalTriggerMisfireInstructions {
+  {static} MISFIRE_INSTRUCTION_FIRE_ONCE_NOW = 1
+  {static} MISFIRE_INSTRUCTION_DO_NOTHING = 2
+}
+
+MisfireInstructions <|-- SimpleTriggerMisfireInstructions
+MisfireInstructions <|-- CronTriggerMisfireInstructions
+MisfireInstructions <|-- CalendarIntervalTriggerMisfireInstructions
+MisfireInstructions <|-- DailyTimeIntervalTriggerMisfireInstructions
+
+note bottom of TriggerState
+  触发器的可能状态
+  影响触发器的执行行为
+end note
+
+note bottom of CompletedExecutionInstruction
+  任务执行完成后的指令
+  控制触发器和任务的后续行为
+end note
+
+note bottom of MisfireInstructions
+  错过触发时间的处理策略
+  通用策略适用于所有触发器类型
+end note
+
+note bottom of SimpleTriggerMisfireInstructions
+  SimpleTrigger特有的错过触发处理策略
+end note
+
+note bottom of CronTriggerMisfireInstructions
+  CronTrigger特有的错过触发处理策略
+end note
+@enduml 

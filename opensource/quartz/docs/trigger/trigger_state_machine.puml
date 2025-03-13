@@ -1,0 +1,54 @@
+@startuml
+!theme plain
+skinparam StateFontStyle bold
+skinparam StateBackgroundColor #F8F9FA
+skinparam StateBorderColor #DEE2E6
+skinparam ArrowColor #495057
+
+[*] --> NONE : 触发器创建但未存储
+
+NONE --> NORMAL : 触发器被存储到调度器
+
+NORMAL --> PAUSED : 触发器被暂停
+NORMAL --> COMPLETE : 触发器执行完成且不再重复
+NORMAL --> ERROR : 触发器执行出错
+NORMAL --> BLOCKED : 触发器被阻塞(Job实例已在执行)
+NORMAL --> [*] : 触发器被删除
+
+PAUSED --> NORMAL : 触发器被恢复
+PAUSED --> [*] : 触发器被删除
+
+BLOCKED --> NORMAL : 阻塞的Job执行完成
+BLOCKED --> PAUSED : 触发器在阻塞状态被暂停
+BLOCKED --> ERROR : 阻塞的Job执行出错
+
+ERROR --> NORMAL : 错误被重置
+ERROR --> [*] : 触发器被删除
+
+COMPLETE --> [*] : 触发器被删除
+
+note right of NONE
+  初始状态，触发器已创建但尚未存储到调度器
+end note
+
+note right of NORMAL
+  正常状态，触发器等待下一次触发或正在执行
+end note
+
+note right of PAUSED
+  暂停状态，触发器暂时不会被触发
+end note
+
+note right of COMPLETE
+  完成状态，触发器已达到结束条件，不再触发
+end note
+
+note right of ERROR
+  错误状态，触发器执行过程中发生错误
+end note
+
+note right of BLOCKED
+  阻塞状态，触发器对应的Job实例已在执行中
+  (适用于不允许并发执行的Job)
+end note
+@enduml 

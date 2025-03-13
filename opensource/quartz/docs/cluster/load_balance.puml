@@ -1,0 +1,60 @@
+@startuml
+title Quartz 集群负载均衡示意图
+
+skinparam backgroundColor white
+skinparam rectangleBorderColor #999999
+skinparam rectangleBackgroundColor #F8F8F8
+
+rectangle "机器A" {
+    rectangle "调度器A" as SchedulerA
+    rectangle "线程池A\n(5个线程)" as ThreadPoolA
+    
+    rectangle "作业实例" as JobA1
+    rectangle "作业实例" as JobA2
+    rectangle "作业实例" as JobA3
+}
+
+rectangle "机器B" {
+    rectangle "调度器B" as SchedulerB
+    rectangle "线程池B\n(5个线程)" as ThreadPoolB
+    
+    rectangle "作业实例" as JobB1
+    rectangle "作业实例" as JobB2
+    rectangle "作业实例" as JobB3
+}
+
+database "共享数据库" {
+    rectangle "触发器T1 (ACQUIRED by A)" as T1
+    rectangle "触发器T2 (ACQUIRED by B)" as T2
+    rectangle "触发器T3 (ACQUIRED by A)" as T3
+    rectangle "触发器T4 (WAITING)" as T4
+    rectangle "触发器T5 (ACQUIRED by B)" as T5
+    rectangle "触发器T6 (ACQUIRED by B)" as T6
+}
+
+T1 -[#green]-> SchedulerA
+T3 -[#green]-> SchedulerA
+SchedulerA -[#blue]-> JobA1
+SchedulerA -[#blue]-> JobA2
+SchedulerA -[#blue]-> JobA3
+JobA1 -[#blue]-> ThreadPoolA
+JobA2 -[#blue]-> ThreadPoolA
+JobA3 -[#blue]-> ThreadPoolA
+
+T2 -[#red]-> SchedulerB
+T5 -[#red]-> SchedulerB
+T6 -[#red]-> SchedulerB
+SchedulerB -[#purple]-> JobB1
+SchedulerB -[#purple]-> JobB2
+SchedulerB -[#purple]-> JobB3
+JobB1 -[#purple]-> ThreadPoolB
+JobB2 -[#purple]-> ThreadPoolB
+JobB3 -[#purple]-> ThreadPoolB
+
+note bottom of T4
+  T4尚未被获取，
+  下一个获取它的调度器
+  将执行对应的作业
+end note
+
+@enduml

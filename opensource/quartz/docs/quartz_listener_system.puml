@@ -1,0 +1,44 @@
+@startuml
+!theme plain
+skinparam componentStyle rectangle
+skinparam componentBackgroundColor #F8F9FA
+skinparam componentBorderColor #DEE2E6
+skinparam arrowColor #495057
+
+component "Scheduler" as scheduler {
+  component "ListenerManager" as listenerManager
+  component "JobStore" as jobStore
+  component "ThreadPool" as threadPool
+  component "QuartzSchedulerThread" as schedulerThread
+}
+
+component "TriggerListener" as triggerListener
+component "JobListener" as jobListener
+component "SchedulerListener" as schedulerListener
+
+component "Trigger" as trigger
+component "Job" as job
+component "JobDetail" as jobDetail
+
+listenerManager --> triggerListener : 管理
+listenerManager --> jobListener : 管理
+listenerManager --> schedulerListener : 管理
+
+schedulerThread --> trigger : 触发
+trigger --> job : 执行
+job --> jobDetail : 关联
+
+trigger ..> triggerListener : 事件通知
+job ..> jobListener : 事件通知
+scheduler ..> schedulerListener : 事件通知
+
+note right of triggerListener
+  监听触发器的生命周期事件
+  可以拦截和修改触发器行为
+end note
+
+note right of listenerManager
+  管理所有监听器
+  负责事件分发
+end note
+@enduml 

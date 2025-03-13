@@ -1,0 +1,80 @@
+@startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam classBackgroundColor #F8F9FA
+skinparam classBorderColor #DEE2E6
+
+interface Trigger {
+  +getKey(): TriggerKey
+  +getJobKey(): JobKey
+  +getJobDataMap(): JobDataMap
+  +getNextFireTime(): Date
+  +getPreviousFireTime(): Date
+}
+
+interface Job {
+  +execute(context: JobExecutionContext): void
+}
+
+class JobDetail {
+  +getKey(): JobKey
+  +getDescription(): String
+  +getJobClass(): Class<? extends Job>
+  +getJobDataMap(): JobDataMap
+  +isDurable(): boolean
+  +isPersistJobDataAfterExecution(): boolean
+  +isConcurrentExectionDisallowed(): boolean
+  +requestsRecovery(): boolean
+}
+
+class Scheduler {
+  +scheduleJob(jobDetail: JobDetail, trigger: Trigger): Date
+  +scheduleJob(trigger: Trigger): Date
+  +rescheduleJob(triggerKey: TriggerKey, newTrigger: Trigger): Date
+  +unscheduleJob(triggerKey: TriggerKey): boolean
+  +pauseTrigger(triggerKey: TriggerKey): void
+  +resumeTrigger(triggerKey: TriggerKey): void
+}
+
+class JobExecutionContext {
+  +getJobDetail(): JobDetail
+  +getTrigger(): Trigger
+  +getScheduler(): Scheduler
+  +getMergedJobDataMap(): JobDataMap
+  +getFireTime(): Date
+  +getScheduledFireTime(): Date
+  +getPreviousFireTime(): Date
+  +getNextFireTime(): Date
+}
+
+Trigger --> JobKey : references
+JobDetail --> JobKey : has
+Trigger --> JobDataMap : has
+JobDetail --> JobDataMap : has
+Scheduler --> Trigger : manages
+Scheduler --> JobDetail : manages
+JobExecutionContext --> Trigger : references
+JobExecutionContext --> JobDetail : references
+JobDetail --> Job : references job class
+
+note bottom of Trigger
+  触发器定义了任务的执行时间
+  可以包含传递给任务的数据
+end note
+
+note bottom of Job
+  任务接口定义了执行逻辑
+  通过execute方法实现具体功能
+end note
+
+note bottom of JobDetail
+  任务详情包含任务的配置信息
+  如任务类、数据、持久性等
+end note
+
+note bottom of JobExecutionContext
+  任务执行上下文
+  在任务执行时提供触发器和任务详情信息
+end note
+@enduml 

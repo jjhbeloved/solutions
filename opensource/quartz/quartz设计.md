@@ -64,7 +64,7 @@ Schedule 每次执行 task 的时候会根据 job 的定义创建新 Job Instanc
 
 ### Scheduler
 
-是总控，负责协调 Job 和 Trigger 的执行
+一个JVM进程中维护一个中央调度器(Scheduler)，它负责管理所有的作业(Job)和触发器(Trigger)
 
 1. mode
    1. single

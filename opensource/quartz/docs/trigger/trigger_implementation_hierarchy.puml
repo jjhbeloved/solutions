@@ -1,0 +1,139 @@
+@startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam classBackgroundColor #F8F9FA
+skinparam classBorderColor #DEE2E6
+
+interface Trigger {
+  +getKey(): TriggerKey
+  +getJobKey(): JobKey
+  +getNextFireTime(): Date
+  +getPreviousFireTime(): Date
+  +getFireTimeAfter(afterTime: Date): Date
+  +getFinalFireTime(): Date
+  +getMisfireInstruction(): int
+  +getScheduleBuilder(): ScheduleBuilder<? extends Trigger>
+}
+
+interface "OperableTrigger" as OperableTrigger {
+  +computeFirstFireTime(cal: Calendar): Date
+  +triggered(cal: Calendar): void
+  +updateAfterMisfire(cal: Calendar): void
+  +updateWithNewCalendar(cal: Calendar, misfireThreshold: long): void
+  +validate(): void
+  +setFireInstanceId(id: String): void
+  +getFireInstanceId(): String
+  +setNextFireTime(nextFireTime: Date): void
+  +setPreviousFireTime(previousFireTime: Date): void
+  +setFireTimes(nextFireTime: Date, previousFireTime: Date): void
+}
+
+interface "MutableTrigger" as MutableTrigger {
+  +setKey(key: TriggerKey): void
+  +setJobKey(jobKey: JobKey): void
+  +setDescription(description: String): void
+  +setCalendarName(calendarName: String): void
+  +setPriority(priority: int): void
+  +setStartTime(startTime: Date): void
+  +setEndTime(endTime: Date): void
+  +setMisfireInstruction(misfireInstruction: int): void
+}
+
+abstract class "AbstractTrigger" as AbstractTrigger {
+  #key: TriggerKey
+  #jobKey: JobKey
+  #description: String
+  #calendarName: String
+  #jobDataMap: JobDataMap
+  #priority: int
+  #startTime: Date
+  #endTime: Date
+  #misfireInstruction: int
+}
+
+class "SimpleTriggerImpl" as SimpleTriggerImpl {
+  -repeatCount: int
+  -repeatInterval: long
+  -timesTriggered: int
+}
+
+class "CronTriggerImpl" as CronTriggerImpl {
+  -cronExpression: String
+  -timeZone: TimeZone
+}
+
+class "CalendarIntervalTriggerImpl" as CalendarIntervalTriggerImpl {
+  -repeatInterval: int
+  -repeatIntervalUnit: IntervalUnit
+}
+
+class "DailyTimeIntervalTriggerImpl" as DailyTimeIntervalTriggerImpl {
+  -repeatInterval: int
+  -repeatIntervalUnit: IntervalUnit
+  -daysOfWeek: Set<Integer>
+  -startTimeOfDay: TimeOfDay
+  -endTimeOfDay: TimeOfDay
+}
+
+interface "SimpleTrigger" as SimpleTrigger {
+  +getRepeatCount(): int
+  +getRepeatInterval(): long
+  +getTimesTriggered(): int
+}
+
+interface "CronTrigger" as CronTrigger {
+  +getCronExpression(): String
+  +getExpressionSummary(): String
+  +getTimeZone(): TimeZone
+}
+
+interface "CalendarIntervalTrigger" as CalendarIntervalTrigger {
+  +getRepeatInterval(): int
+  +getRepeatIntervalUnit(): IntervalUnit
+}
+
+interface "DailyTimeIntervalTrigger" as DailyTimeIntervalTrigger {
+  +getRepeatInterval(): int
+  +getRepeatIntervalUnit(): IntervalUnit
+  +getDaysOfWeek(): Set<Integer>
+  +getStartTimeOfDay(): TimeOfDay
+  +getEndTimeOfDay(): TimeOfDay
+}
+
+Trigger <|-- OperableTrigger
+Trigger <|-- MutableTrigger
+
+OperableTrigger <|.. AbstractTrigger
+MutableTrigger <|.. AbstractTrigger
+
+AbstractTrigger <|-- SimpleTriggerImpl
+AbstractTrigger <|-- CronTriggerImpl
+AbstractTrigger <|-- CalendarIntervalTriggerImpl
+AbstractTrigger <|-- DailyTimeIntervalTriggerImpl
+
+SimpleTrigger <|.. SimpleTriggerImpl
+CronTrigger <|.. CronTriggerImpl
+CalendarIntervalTrigger <|.. CalendarIntervalTriggerImpl
+DailyTimeIntervalTrigger <|.. DailyTimeIntervalTriggerImpl
+
+SimpleTrigger <|-- Trigger
+CronTrigger <|-- Trigger
+CalendarIntervalTrigger <|-- Trigger
+DailyTimeIntervalTrigger <|-- Trigger
+
+note bottom of OperableTrigger
+  内部使用的可操作触发器接口
+  提供Quartz调度器内部使用的方法
+end note
+
+note bottom of MutableTrigger
+  可变触发器接口
+  提供修改触发器属性的方法
+end note
+
+note bottom of AbstractTrigger
+  触发器的抽象基类
+  实现了大部分通用功能
+end note
+@enduml 

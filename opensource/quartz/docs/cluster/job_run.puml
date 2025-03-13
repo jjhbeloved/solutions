@@ -1,0 +1,42 @@
+@startuml
+title Quartz 作业执行流程
+
+participant "调度器A\n(机器A)" as SchedulerA
+participant "线程池A" as ThreadPoolA
+participant "数据库" as DB
+participant "线程池B" as ThreadPoolB
+participant "调度器B\n(机器B)" as SchedulerB
+
+note over SchedulerA: 成功获取触发器T1
+
+SchedulerA -> DB: 获取作业详情\nSELECT * FROM QRTZ_JOB_DETAILS\nWHERE JOB_NAME = 'J1'
+DB --> SchedulerA: 返回作业J1详情
+
+SchedulerA -> DB: 记录触发执行\nINSERT INTO QRTZ_FIRED_TRIGGERS\n(ENTRY_ID, INSTANCE_NAME, ...)\nVALUES (?, 'instanceA', ...)
+DB --> SchedulerA: 插入成功
+
+SchedulerA -> ThreadPoolA: 提交作业J1到线程池
+ThreadPoolA --> SchedulerA: 接受作业
+
+note over ThreadPoolA: 执行作业J1
+
+ThreadPoolA -> DB: 作业完成，更新状态\nDELETE FROM QRTZ_FIRED_TRIGGERS\nWHERE ENTRY_ID = ?
+DB --> ThreadPoolA: 删除成功
+
+note over SchedulerB: 成功获取触发器T2
+
+SchedulerB -> DB: 获取作业详情\nSELECT * FROM QRTZ_JOB_DETAILS\nWHERE JOB_NAME = 'J2'
+DB --> SchedulerB: 返回作业J2详情
+
+SchedulerB -> DB: 记录触发执行\nINSERT INTO QRTZ_FIRED_TRIGGERS\n(ENTRY_ID, INSTANCE_NAME, ...)\nVALUES (?, 'instanceB', ...)
+DB --> SchedulerB: 插入成功
+
+SchedulerB -> ThreadPoolB: 提交作业J2到线程池
+ThreadPoolB --> SchedulerB: 接受作业
+
+note over ThreadPoolB: 执行作业J2
+
+ThreadPoolB -> DB: 作业完成，更新状态\nDELETE FROM QRTZ_FIRED_TRIGGERS\nWHERE ENTRY_ID = ?
+DB --> ThreadPoolB: 删除成功
+
+@enduml

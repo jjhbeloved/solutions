@@ -1,0 +1,51 @@
+@startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam classBackgroundColor #F8F9FA
+skinparam classBorderColor #DEE2E6
+
+interface TriggerListener {
+  +getName(): String
+  +triggerFired(trigger: Trigger, context: JobExecutionContext): void
+  +vetoJobExecution(trigger: Trigger, context: JobExecutionContext): boolean
+  +triggerMisfired(trigger: Trigger): void
+  +triggerComplete(trigger: Trigger, context: JobExecutionContext, triggerInstructionCode: CompletedExecutionInstruction): void
+}
+
+class TriggerListenerSupport {
+  +getName(): String
+  +triggerFired(trigger: Trigger, context: JobExecutionContext): void
+  +vetoJobExecution(trigger: Trigger, context: JobExecutionContext): boolean
+  +triggerMisfired(trigger: Trigger): void
+  +triggerComplete(trigger: Trigger, context: JobExecutionContext, triggerInstructionCode: CompletedExecutionInstruction): void
+}
+
+class CustomTriggerListener {
+  -name: String
+  +CustomTriggerListener(name: String)
+  +getName(): String
+  +triggerFired(trigger: Trigger, context: JobExecutionContext): void
+  +vetoJobExecution(trigger: Trigger, context: JobExecutionContext): boolean
+  +triggerMisfired(trigger: Trigger): void
+  +triggerComplete(trigger: Trigger, context: JobExecutionContext, triggerInstructionCode: CompletedExecutionInstruction): void
+}
+
+TriggerListener <|.. TriggerListenerSupport
+TriggerListener <|.. CustomTriggerListener
+
+note right of TriggerListener
+  触发器监听器接口
+  定义了触发器生命周期中的关键事件回调
+end note
+
+note right of TriggerListenerSupport
+  提供默认空实现的支持类
+  便于开发者只覆盖需要的方法
+end note
+
+note right of CustomTriggerListener
+  自定义触发器监听器实现
+  根据业务需求处理触发器事件
+end note
+@enduml 

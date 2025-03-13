@@ -1,0 +1,105 @@
+@startuml
+!define RECTANGLE class
+
+skinparam backgroundColor white
+skinparam classBackgroundColor #F8F8F8
+skinparam classBorderColor #999999
+skinparam arrowColor #666666
+skinparam stereotypeCBackgroundColor #ADD1B2
+skinparam stereotypeCBorderColor #A9DCDF
+
+package "机器A" {
+    RECTANGLE "调度器实例A\n(Scheduler A)" as SchedulerA {
+        + instanceId = "instanceA"
+        + 线程池A
+        + 获取触发器()
+        + 执行作业()
+    }
+    
+    RECTANGLE "作业执行线程池A" as ThreadPoolA {
+        + 线程数 = N
+        + 执行作业实例()
+    }
+}
+
+package "机器B" {
+    RECTANGLE "调度器实例B\n(Scheduler B)" as SchedulerB {
+        + instanceId = "instanceB"
+        + 线程池B
+        + 获取触发器()
+        + 执行作业()
+    }
+    
+    RECTANGLE "作业执行线程池B" as ThreadPoolB {
+        + 线程数 = M
+        + 执行作业实例()
+    }
+}
+
+package "共享数据库" {
+    RECTANGLE "QRTZ_TRIGGERS表" as Triggers {
+        + TRIGGER_NAME
+        + TRIGGER_GROUP
+        + NEXT_FIRE_TIME
+        + TRIGGER_STATE
+        + INSTANCE_NAME
+    }
+    
+    RECTANGLE "QRTZ_JOB_DETAILS表" as Jobs {
+        + JOB_NAME
+        + JOB_GROUP
+        + JOB_CLASS_NAME
+        + JOB_DATA
+    }
+    
+    RECTANGLE "QRTZ_SCHEDULER_STATE表" as SchedulerState {
+        + INSTANCE_NAME
+        + LAST_CHECKIN_TIME
+        + CHECKIN_INTERVAL
+    }
+    
+    RECTANGLE "QRTZ_LOCKS表" as Locks {
+        + LOCK_NAME
+    }
+    
+    RECTANGLE "QRTZ_FIRED_TRIGGERS表" as FiredTriggers {
+        + ENTRY_ID
+        + INSTANCE_NAME
+        + TRIGGER_NAME
+        + TRIGGER_GROUP
+        + STATE
+    }
+}
+
+SchedulerA --> Triggers : 1. 查询下一批待触发的触发器
+Triggers --> SchedulerA : 2. 返回触发器列表
+SchedulerA --> Triggers : 3. 尝试获取触发器(乐观锁)
+SchedulerA --> Jobs : 4. 获取作业详情
+SchedulerA --> FiredTriggers : 5. 记录触发执行
+SchedulerA --> ThreadPoolA : 6. 提交作业到线程池
+
+SchedulerB --> Triggers : 1. 查询下一批待触发的触发器
+Triggers --> SchedulerB : 2. 返回触发器列表
+SchedulerB --> Triggers : 3. 尝试获取触发器(乐观锁)
+SchedulerB --> Jobs : 4. 获取作业详情
+SchedulerB --> FiredTriggers : 5. 记录触发执行
+SchedulerB --> ThreadPoolB : 6. 提交作业到线程池
+
+SchedulerA --> SchedulerState : 定期更新心跳
+SchedulerB --> SchedulerState : 定期更新心跳
+
+SchedulerA --> Locks : 获取分布式锁
+SchedulerB --> Locks : 获取分布式锁
+
+note bottom of Triggers
+  触发器状态:
+  WAITING - 等待被获取
+  ACQUIRED - 已被调度器获取
+  EXECUTING - 正在执行
+  COMPLETE - 执行完成
+  BLOCKED - 被阻塞
+  PAUSED - 被暂停
+  ERROR - 执行出错
+end note
+
+@enduml

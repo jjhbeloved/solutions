@@ -1,0 +1,77 @@
+@startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam classBackgroundColor #F8F9FA
+skinparam classBorderColor #DEE2E6
+
+interface ListenerManager {
+  +addTriggerListener(listener: TriggerListener): void
+  +addTriggerListener(listener: TriggerListener, matcher: Matcher<TriggerKey>): void
+  +getTriggerListeners(): List<TriggerListener>
+  +removeTriggerListener(name: String): boolean
+}
+
+interface Matcher<T> {
+  +isMatch(key: T): boolean
+}
+
+class KeyMatcher<T extends Key<?>> {
+  +{static} keyEquals(key: T): Matcher<T>
+  +{static} keyContains(keyName: String): Matcher<T>
+  +{static} keyContains(keyGroup: String): Matcher<T>
+}
+
+class GroupMatcher<T extends Key<?>> {
+  +{static} groupEquals(group: String): GroupMatcher<T>
+  +{static} groupStartsWith(groupPrefix: String): GroupMatcher<T>
+  +{static} groupEndsWith(groupSuffix: String): GroupMatcher<T>
+  +{static} groupContains(groupPart: String): GroupMatcher<T>
+}
+
+class AndMatcher<T> {
+  +{static} and(matcher1: Matcher<T>, matcher2: Matcher<T>): Matcher<T>
+}
+
+class OrMatcher<T> {
+  +{static} or(matcher1: Matcher<T>, matcher2: Matcher<T>): Matcher<T>
+}
+
+class EverythingMatcher<T> {
+  +{static} allTriggers(): Matcher<TriggerKey>
+  +{static} allJobs(): Matcher<JobKey>
+}
+
+interface TriggerListener
+
+Matcher <|.. KeyMatcher
+Matcher <|.. GroupMatcher
+Matcher <|.. AndMatcher
+Matcher <|.. OrMatcher
+Matcher <|.. EverythingMatcher
+
+ListenerManager --> TriggerListener : 管理
+ListenerManager --> Matcher : 使用
+
+note right of ListenerManager
+  管理所有监听器
+  支持基于匹配器的监听器注册
+end note
+
+note right of Matcher
+  定义匹配规则
+  决定哪些触发器会通知特定监听器
+end note
+
+note right of KeyMatcher
+  基于触发器键的精确匹配
+end note
+
+note right of GroupMatcher
+  基于触发器组的匹配
+end note
+
+note right of EverythingMatcher
+  匹配所有触发器
+end note
+@enduml 

@@ -1,0 +1,137 @@
+@startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam classBackgroundColor #F8F9FA
+skinparam classBorderColor #DEE2E6
+
+class TriggerBuilder<T extends Trigger> {
+  -key: TriggerKey
+  -description: String
+  -startTime: Date
+  -endTime: Date
+  -calendarName: String
+  -priority: int
+  -jobKey: JobKey
+  -jobDataMap: JobDataMap
+  -scheduleBuilder: ScheduleBuilder<T>
+  +{static} newTrigger(): TriggerBuilder<Trigger>
+  +withIdentity(name: String): TriggerBuilder<T>
+  +withIdentity(name: String, group: String): TriggerBuilder<T>
+  +withIdentity(key: TriggerKey): TriggerBuilder<T>
+  +withDescription(description: String): TriggerBuilder<T>
+  +startAt(startTime: Date): TriggerBuilder<T>
+  +startNow(): TriggerBuilder<T>
+  +endAt(endTime: Date): TriggerBuilder<T>
+  +withSchedule(scheduleBuilder: ScheduleBuilder<T>): TriggerBuilder<T>
+  +withPriority(priority: int): TriggerBuilder<T>
+  +forJob(jobKey: JobKey): TriggerBuilder<T>
+  +forJob(jobName: String, jobGroup: String): TriggerBuilder<T>
+  +forJob(jobDetail: JobDetail): TriggerBuilder<T>
+  +usingJobData(dataMap: JobDataMap): TriggerBuilder<T>
+  +usingJobData(key: String, value: Object): TriggerBuilder<T>
+  +build(): T
+}
+
+abstract class ScheduleBuilder<T extends Trigger> {
+  +{abstract} build(): T
+}
+
+class SimpleScheduleBuilder {
+  -repeatCount: int
+  -repeatInterval: long
+  -misfireInstruction: int
+  +{static} simpleSchedule(): SimpleScheduleBuilder
+  +withIntervalInMilliseconds(intervalInMillis: long): SimpleScheduleBuilder
+  +withIntervalInSeconds(intervalInSeconds: int): SimpleScheduleBuilder
+  +withIntervalInMinutes(intervalInMinutes: int): SimpleScheduleBuilder
+  +withIntervalInHours(intervalInHours: int): SimpleScheduleBuilder
+  +withRepeatCount(repeatCount: int): SimpleScheduleBuilder
+  +repeatForever(): SimpleScheduleBuilder
+  +withMisfireHandlingInstructionIgnoreMisfires(): SimpleScheduleBuilder
+  +withMisfireHandlingInstructionFireNow(): SimpleScheduleBuilder
+  +withMisfireHandlingInstructionNextWithExistingCount(): SimpleScheduleBuilder
+  +withMisfireHandlingInstructionNextWithRemainingCount(): SimpleScheduleBuilder
+  +withMisfireHandlingInstructionNowWithExistingCount(): SimpleScheduleBuilder
+  +withMisfireHandlingInstructionNowWithRemainingCount(): SimpleScheduleBuilder
+}
+
+class CronScheduleBuilder {
+  -cronExpression: CronExpression
+  -misfireInstruction: int
+  -timeZone: TimeZone
+  +{static} cronSchedule(cronExpression: String): CronScheduleBuilder
+  +{static} cronSchedule(cronExpression: CronExpression): CronScheduleBuilder
+  +{static} dailyAtHourAndMinute(hour: int, minute: int): CronScheduleBuilder
+  +{static} weeklyOnDayAndHourAndMinute(dayOfWeek: int, hour: int, minute: int): CronScheduleBuilder
+  +{static} monthlyOnDayAndHourAndMinute(dayOfMonth: int, hour: int, minute: int): CronScheduleBuilder
+  +inTimeZone(timezone: TimeZone): CronScheduleBuilder
+  +withMisfireHandlingInstructionIgnoreMisfires(): CronScheduleBuilder
+  +withMisfireHandlingInstructionDoNothing(): CronScheduleBuilder
+  +withMisfireHandlingInstructionFireAndProceed(): CronScheduleBuilder
+}
+
+class CalendarIntervalScheduleBuilder {
+  -interval: int
+  -intervalUnit: IntervalUnit
+  -misfireInstruction: int
+  -preserveHourOfDayAcrossDaylightSavings: boolean
+  -skipDayIfHourDoesNotExist: boolean
+  -timeZone: TimeZone
+  +{static} calendarIntervalSchedule(): CalendarIntervalScheduleBuilder
+  +withInterval(interval: int, unit: IntervalUnit): CalendarIntervalScheduleBuilder
+  +withIntervalInSeconds(intervalInSeconds: int): CalendarIntervalScheduleBuilder
+  +withIntervalInMinutes(intervalInMinutes: int): CalendarIntervalScheduleBuilder
+  +withIntervalInHours(intervalInHours: int): CalendarIntervalScheduleBuilder
+  +withIntervalInDays(intervalInDays: int): CalendarIntervalScheduleBuilder
+  +withIntervalInWeeks(intervalInWeeks: int): CalendarIntervalScheduleBuilder
+  +withIntervalInMonths(intervalInMonths: int): CalendarIntervalScheduleBuilder
+  +withIntervalInYears(intervalInYears: int): CalendarIntervalScheduleBuilder
+  +withMisfireHandlingInstructionIgnoreMisfires(): CalendarIntervalScheduleBuilder
+  +withMisfireHandlingInstructionDoNothing(): CalendarIntervalScheduleBuilder
+  +withMisfireHandlingInstructionFireAndProceed(): CalendarIntervalScheduleBuilder
+}
+
+class DailyTimeIntervalScheduleBuilder {
+  -interval: int
+  -intervalUnit: IntervalUnit
+  -daysOfWeek: Set<Integer>
+  -startTimeOfDay: TimeOfDay
+  -endTimeOfDay: TimeOfDay
+  -misfireInstruction: int
+  +{static} dailyTimeIntervalSchedule(): DailyTimeIntervalScheduleBuilder
+  +withInterval(interval: int, unit: IntervalUnit): DailyTimeIntervalScheduleBuilder
+  +withIntervalInSeconds(intervalInSeconds: int): DailyTimeIntervalScheduleBuilder
+  +withIntervalInMinutes(intervalInMinutes: int): DailyTimeIntervalScheduleBuilder
+  +withIntervalInHours(intervalInHours: int): DailyTimeIntervalScheduleBuilder
+  +onDaysOfTheWeek(daysOfWeek: Integer...): DailyTimeIntervalScheduleBuilder
+  +onMondayThroughFriday(): DailyTimeIntervalScheduleBuilder
+  +onSaturdayAndSunday(): DailyTimeIntervalScheduleBuilder
+  +onEveryDay(): DailyTimeIntervalScheduleBuilder
+  +startingDailyAt(timeOfDay: TimeOfDay): DailyTimeIntervalScheduleBuilder
+  +endingDailyAt(timeOfDay: TimeOfDay): DailyTimeIntervalScheduleBuilder
+  +withMisfireHandlingInstructionIgnoreMisfires(): DailyTimeIntervalScheduleBuilder
+  +withMisfireHandlingInstructionDoNothing(): DailyTimeIntervalScheduleBuilder
+  +withMisfireHandlingInstructionFireAndProceed(): DailyTimeIntervalScheduleBuilder
+}
+
+interface Trigger
+
+ScheduleBuilder <|-- SimpleScheduleBuilder
+ScheduleBuilder <|-- CronScheduleBuilder
+ScheduleBuilder <|-- CalendarIntervalScheduleBuilder
+ScheduleBuilder <|-- DailyTimeIntervalScheduleBuilder
+
+TriggerBuilder --> ScheduleBuilder : uses
+TriggerBuilder --> Trigger : builds
+
+note bottom of TriggerBuilder
+  使用建造者模式创建触发器
+  提供流式API简化触发器配置
+end note
+
+note bottom of ScheduleBuilder
+  抽象调度构建器
+  为不同类型的调度提供统一接口
+end note
+@enduml 

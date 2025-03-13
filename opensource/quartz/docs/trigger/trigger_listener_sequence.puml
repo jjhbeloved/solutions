@@ -1,0 +1,84 @@
+@startuml
+!theme plain
+skinparam sequenceArrowThickness 2
+skinparam sequenceGroupBorderColor #495057
+skinparam sequenceGroupBackgroundColor #F8F9FA
+skinparam sequenceLifeLineBorderColor #DEE2E6
+
+participant "Scheduler" as scheduler
+participant "QuartzSchedulerThread" as schedulerThread
+participant "TriggerListener" as listener
+participant "Trigger" as trigger
+participant "Job" as job
+
+== 触发器正常执行流程 ==
+
+scheduler -> schedulerThread : 启动调度线程
+activate schedulerThread
+
+schedulerThread -> trigger : 检查触发时间
+activate trigger
+trigger --> schedulerThread : 触发时间到达
+deactivate trigger
+
+schedulerThread -> listener : triggerFired(trigger, context)
+activate listener
+listener --> schedulerThread : 处理触发事件
+deactivate listener
+
+schedulerThread -> listener : vetoJobExecution(trigger, context)
+activate listener
+listener --> schedulerThread : 返回false(允许执行)
+deactivate listener
+
+schedulerThread -> job : execute(context)
+activate job
+job --> schedulerThread : 任务执行完成
+deactivate job
+
+schedulerThread -> trigger : triggered(calendar)
+activate trigger
+trigger --> schedulerThread : 返回指令
+deactivate trigger
+
+schedulerThread -> listener : triggerComplete(trigger, context, instruction)
+activate listener
+listener --> schedulerThread : 处理完成事件
+deactivate listener
+
+== 触发器错过触发时间流程 ==
+
+schedulerThread -> trigger : 检测到错过触发
+activate trigger
+trigger --> schedulerThread : 报告错过触发
+deactivate trigger
+
+schedulerThread -> listener : triggerMisfired(trigger)
+activate listener
+listener --> schedulerThread : 处理错过触发事件
+deactivate listener
+
+schedulerThread -> trigger : updateAfterMisfire()
+activate trigger
+trigger --> schedulerThread : 更新触发器状态
+deactivate trigger
+
+== 触发器被否决执行流程 ==
+
+schedulerThread -> listener : triggerFired(trigger, context)
+activate listener
+listener --> schedulerThread : 处理触发事件
+deactivate listener
+
+schedulerThread -> listener : vetoJobExecution(trigger, context)
+activate listener
+listener --> schedulerThread : 返回true(否决执行)
+deactivate listener
+
+schedulerThread -> listener : triggerComplete(trigger, context, INSTRUCTION_NOT_EXECUTED)
+activate listener
+listener --> schedulerThread : 处理完成事件
+deactivate listener
+
+deactivate schedulerThread
+@enduml 

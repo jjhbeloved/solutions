@@ -1,0 +1,187 @@
+@startuml db-scheduler类图
+
+!theme plain
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+
+title db-scheduler核心类图
+
+package "核心组件" {
+  class Scheduler {
+    - dataSource: DataSource
+    - taskRepository: TaskRepository
+    - schedulerName: String
+    - pollingInterval: Duration
+    - heartbeatInterval: Duration
+    - threads: int
+    + create(dataSource: DataSource): Scheduler.Builder
+    + register(task: Task<?>): void
+    + start(): void
+    + stop(waitForRunningTasks: boolean): void
+    + getSchedulerClient(): SchedulerClient
+    + triggerCheckForDueExecutions(): void
+  }
+  
+  class SchedulerBuilder {
+    - dataSource: DataSource
+    + schedulerName(name: String): SchedulerBuilder
+    + pollingInterval(interval: Duration): SchedulerBuilder
+    + heartbeatInterval(interval: Duration): SchedulerBuilder
+    + threads(threads: int): SchedulerBuilder
+    + serializer(serializer: Serializer): SchedulerBuilder
+    + enableImmediateExecution(): SchedulerBuilder
+    + pollingStrategy(strategy: PollingStrategy): SchedulerBuilder
+    + build(): Scheduler
+  }
+
+  class SchedulerClient {
+    + schedule(instance: TaskInstance<?>, executionTime: Instant): void
+    + schedule(instance: TaskInstance<?>, executionTime: Instant, priority: int): void
+    + cancel(taskName: String, instanceId: String): boolean
+    + reschedule(taskName: String, instanceId: String, newExecutionTime: Instant): boolean
+  }
+
+  class TaskRepository {
+    - dataSource: DataSource
+    - tableName: String
+    + createIfNotExists(task: TaskInstance<?>, executionTime: Instant): boolean
+    + getScheduledExecutions(limit: int): List<Execution>
+    + lockAndGetScheduledExecution(): Optional<Execution>
+    + updateHeartbeat(execution: Execution): boolean
+    + complete(execution: Execution, executionComplete: ExecutionComplete): boolean
+  }
+  
+  class ExecutionContext {
+    + updateHeartbeat(): void
+    + getSchedulerClient(): SchedulerClient
+  }
+}
+
+package "任务定义" {
+  interface Task<T> {
+    + getTaskName(): String
+    + execute(taskInstance: TaskInstance<T>, executionContext: ExecutionContext): void
+    + onDeadExecution(execution: Execution, executionOperations: ExecutionOperations): ExecutionComplete
+  }
+  
+  class TaskInstance<T> {
+    - taskName: String
+    - id: String
+    - data: T
+    + oneTime(taskName: String, id: String, data: T): TaskInstance<T>
+    + recurring(taskName: String, id: String, data: T): TaskInstance<T>
+    + getTaskName(): String
+    + getId(): String
+    + getData(): T
+  }
+  
+  class RecurringTask<T> implements Task {
+    - schedule: Schedule
+    + getSchedule(): Schedule
+  }
+  
+  class OneTimeTask<T> implements Task {
+  }
+  
+  class CustomTask<T> implements Task {
+  }
+  
+  interface Schedule {
+    + getNextExecutionTime(lastSuccessfulExecution: Instant): Instant
+    + isDeterministic(): boolean
+  }
+  
+  class FixedDelay implements Schedule {
+    - delay: Duration
+    + ofMinutes(minutes: long): FixedDelay
+    + ofHours(hours: long): FixedDelay
+  }
+  
+  class CronSchedule implements Schedule {
+    - cronExpression: String
+    + daily(time: LocalTime): CronSchedule
+    + weekly(dayOfWeek: DayOfWeek, time: LocalTime): CronSchedule
+  }
+}
+
+package "执行模型" {
+  class Execution {
+    - taskInstance: TaskInstance<?>
+    - executionTime: Instant
+    - picked: boolean
+    - pickedBy: String
+    - lastHeartbeat: Instant
+    - consecutiveFailures: int
+    + isPicked(): boolean
+    + getExecutionTime(): Instant
+    + getTaskInstance(): TaskInstance<?>
+  }
+  
+  class ExecutionComplete {
+    - execution: Execution
+    - result: ExecutionResult
+    - failureInfo: String
+    + success(execution: Execution): ExecutionComplete
+    + failure(execution: Execution, cause: String): ExecutionComplete
+  }
+  
+  enum ExecutionResult {
+    OK
+    FAILED
+  }
+  
+  interface ExecutionOperations {
+    + reschedule(executionComplete: ExecutionComplete, newExecutionTime: Instant): ExecutionComplete
+    + delete(executionComplete: ExecutionComplete): ExecutionComplete
+  }
+}
+
+package "轮询策略" {
+  interface PollingStrategy {
+    + fetchDue(limit: int): List<Execution>
+    + lockAndFetch(PostgreSqlLockAndFetchStrategy): PollingStrategy
+  }
+  
+  class FetchAndLockOnExecute implements PollingStrategy {
+  }
+  
+  class PostgreSqlLockAndFetchStrategy implements PollingStrategy {
+  }
+}
+
+package "序列化" {
+  interface Serializer {
+    + serialize(object: Object): byte[]
+    + deserialize(data: byte[], clazz: Class<?>): Object
+  }
+  
+  class JacksonSerializer implements Serializer {
+  }
+}
+
+Scheduler o-- TaskRepository
+Scheduler o-- "n" Task
+Scheduler o-- PollingStrategy
+Scheduler o-- Serializer
+Scheduler --> SchedulerClient : creates >
+Scheduler *-- ExecutionContext : provides >
+
+SchedulerBuilder --> Scheduler : builds >
+
+Task <-- TaskInstance
+Task <|-- RecurringTask
+Task <|-- OneTimeTask
+Task <|-- CustomTask
+
+RecurringTask o-- Schedule
+Schedule <|-- FixedDelay
+Schedule <|-- CronSchedule
+
+TaskRepository ..> Execution : manages >
+TaskInstance "1" -- "n" Execution
+Execution --> ExecutionComplete : results in >
+ExecutionComplete o-- ExecutionResult
+
+ExecutionOperations <|.. Scheduler : implements
+
+@enduml 

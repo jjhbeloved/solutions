@@ -1,0 +1,121 @@
+@startuml db-scheduler执行流程
+
+!theme plain
+skinparam sequenceMessageAlign center
+
+title db-scheduler任务执行顺序图
+
+actor "应用程序" as App
+participant "Scheduler" as Scheduler
+participant "SchedulerClient" as Client
+participant "TaskRepository" as Repo
+database "数据库" as DB
+participant "Task实现" as Task
+participant "ExecutionContext" as Context
+
+== 初始化与启动 ==
+
+App -> Scheduler ++ : create(dataSource)
+Scheduler -> Scheduler : 创建Builder
+return SchedulerBuilder
+
+App -> Scheduler ++ : 配置(pollingInterval, threads等)
+return 配置完成
+
+App -> Scheduler ++ : register(task)
+Scheduler -> Scheduler : 注册任务
+return 任务注册完成
+
+App -> Scheduler ++ : start()
+Scheduler -> Scheduler : 创建并启动工作线程
+return 调度器启动
+
+== 任务调度 ==
+
+App -> Client ++ : schedule(taskInstance, executionTime)
+Client -> Repo ++ : createIfNotExists(taskInstance, executionTime)
+Repo -> DB ++ : INSERT INTO scheduled_tasks
+note right: 仅在任务不存在时插入
+DB --> Repo -- : 插入结果
+return 是否创建成功
+return 调度完成
+
+== 任务轮询与执行 (fetch-and-lock-on-execute策略) ==
+
+Scheduler -> Scheduler ++ : 轮询线程定期执行
+Scheduler -> Repo ++ : getScheduledExecutions(limit)
+Repo -> DB ++ : SELECT * FROM scheduled_tasks\nWHERE execution_time <= NOW()\nAND picked = false\nORDER BY execution_time\nLIMIT ?
+DB --> Repo -- : 待执行任务列表
+return 待执行任务列表
+
+loop 对每个待执行任务
+    Scheduler -> Repo ++ : tryLock(execution)
+    Repo -> DB ++ : UPDATE scheduled_tasks\nSET picked = true, picked_by = ?,\nlast_heartbeat = NOW()\nWHERE task_name = ? AND id = ?\nAND picked = false
+    DB --> Repo -- : 更新结果
+    return 是否成功锁定
+    
+    alt 成功锁定任务
+        Scheduler -> Scheduler : 提交到执行线程池
+    end
+end
+return 轮询完成
+
+== 任务执行 ==
+
+Scheduler -> Task ++ : execute(taskInstance, executionContext)
+activate Scheduler
+
+loop 任务执行期间
+    Scheduler -> Context ++ : 更新心跳
+    Context -> Repo ++ : updateHeartbeat(execution)
+    Repo -> DB ++ : UPDATE scheduled_tasks\nSET last_heartbeat = NOW()\nWHERE task_name = ? AND id = ?
+    DB --> Repo -- : 更新结果
+    return 更新完成
+    return 心跳更新
+end
+
+Task --> Scheduler -- : 执行完成
+
+alt 执行成功
+    Scheduler -> Repo ++ : complete(execution, ExecutionComplete.success)
+    Repo -> DB ++ : DELETE FROM scheduled_tasks\nWHERE task_name = ? AND id = ?
+    note right: 对于OneTimeTask
+    DB --> Repo -- : 删除结果
+    return 完成处理
+else 执行失败
+    Scheduler -> Repo ++ : complete(execution, ExecutionComplete.failure)
+    Repo -> DB ++ : UPDATE scheduled_tasks\nSET picked = false,\nconsecutive_failures = consecutive_failures + 1,\nexecution_time = ?\nWHERE task_name = ? AND id = ?
+    note right: 重新调度任务
+    DB --> Repo -- : 更新结果
+    return 完成处理
+end
+
+deactivate Scheduler
+
+== 死亡执行检测与处理 ==
+
+Scheduler -> Scheduler ++ : 检测死亡执行
+Scheduler -> Repo ++ : getDueExecutions()
+Repo -> DB ++ : SELECT * FROM scheduled_tasks\nWHERE picked = true\nAND last_heartbeat < ?
+DB --> Repo -- : 死亡执行列表
+return 死亡执行列表
+
+loop 对每个死亡执行
+    Scheduler -> Task ++ : onDeadExecution(execution, executionOperations)
+    Task --> Scheduler -- : 处理结果
+    
+    alt 重新调度
+        Scheduler -> Repo ++ : reschedule(execution, newTime)
+        Repo -> DB ++ : UPDATE scheduled_tasks\nSET picked = false,\nexecution_time = ?\nWHERE task_name = ? AND id = ?
+        DB --> Repo -- : 更新结果
+        return 重新调度完成
+    else 删除
+        Scheduler -> Repo ++ : delete(execution)
+        Repo -> DB ++ : DELETE FROM scheduled_tasks\nWHERE task_name = ? AND id = ?
+        DB --> Repo -- : 删除结果
+        return 删除完成
+    end
+end
+return 死亡执行处理完成
+
+@enduml 

@@ -1,24 +1,39 @@
 # quartz job storage
 
-## JobStorage
+## 概述
 
-### JobStoreSupport 架构设计与流程分析
+JobStorage 是 Quartz 调度框架中负责存储和管理作业与触发器数据的核心组件。它决定了作业数据的持久化方式、集群支持能力以及整体性能特点。Quartz 提供了多种 JobStore 实现，以满足不同应用场景的需求
 
-#### 整体架构设计
+## JobStorage 类型
 
-1. 模板模式
-   1. JobStoreSupport 是一个抽象类，它定义了调度存储的基本框架，但将一些特定实现留给子类
-2. 委托模式
-   1. JobStoreSupport 使用 DriverDelegate 接口来处理与特定数据库的交互
-   2. 这种设计允许支持不同的数据库，而无需修改核心代码
-3. 回调模式
-   1. 使用 TransactionCallback 接口来封装在事务中执行的操作
-   2. 事务管理与业务逻辑分离
-4. 策略模式
-   1. 通过 Semaphore 接口实现不同的锁策略
-   2. 可以配置使用数据库锁或其他锁实现
+Quartz 主要提供三种 JobStore 实现：
 
-#### 核心组件
+1. **RAMJobStore**：内存存储，性能最高但不持久化
+2. **JDBCJobStore**：数据库存储，支持持久化和集群
+   - **JobStoreTX**：自管理事务
+   - **JobStoreCMT**：容器管理事务
+3. **TerracottaJobStore**：基于 Terracotta 分布式缓存的存储方案
+
+## JobStoreSupport 架构设计与流程分析
+
+### 整体架构设计
+
+1. **模板模式**
+   - JobStoreSupport 是一个抽象类，它定义了调度存储的基本框架，但将一些特定实现留给子类
+
+2. **委托模式**
+   - JobStoreSupport 使用 DriverDelegate 接口来处理与特定数据库的交互
+   - 这种设计允许支持不同的数据库，而无需修改核心代码
+
+3. **回调模式**
+   - 使用 TransactionCallback 接口来封装在事务中执行的操作
+   - 事务管理与业务逻辑分离
+
+4. **策略模式**
+   - 通过 Semaphore 接口实现不同的锁策略
+   - 可以配置使用数据库锁或其他锁实现
+
+### 核心组件
 
 1. 事务管理
 2. 锁管理 LockHandler
@@ -26,9 +41,9 @@
 4. 错过触发管理 MisfireHandler
 5. 重试机制
 
-#### 关键流程
+### 关键流程
 
-初始化流程
+#### 初始化流程
 
 ``` java
 public void initialize(ClassLoadHelper loadHelper, SchedulerSignaler signaler) throws SchedulerConfigException {
@@ -57,7 +72,7 @@ public void initialize(ClassLoadHelper loadHelper, SchedulerSignaler signaler) t
 }
 ```
 
-作业存储流程
+#### 作业存储流程
 
 ``` java
 // 1. 获取锁
@@ -73,7 +88,7 @@ public void storeJob(final JobDetail newJob, final boolean replaceExisting) thro
 }
 ```
 
-触发器获取流程
+#### 触发器获取流程
 
 ``` java
 // 负责获取下一批要触发的触发器
@@ -87,7 +102,7 @@ public List<OperableTrigger> acquireNextTriggers(final long noLaterThan, final i
 }
 ```
 
-集群检查流程
+#### 集群检查流程
 
 ``` java
 protected boolean doCheckin() throws JobPersistenceException {
@@ -147,13 +162,33 @@ JobStoreTX (具体实现)
 - 数据源要求：需要配置非XA数据源，用于非托管事务操作
 - 连接属性控制：提供了对连接自动提交和事务隔离级别的精细控制
 
-### RAMJobStore
+## RAMJobStore
 
 `RAMJobStore` 是一个基于内存的作业存储实现, **不支持集群**（isClustered() 返回 false）
 
-### 对比
+### 特点
 
-JobStoreTX与JobStoreCMT的主要区别：
+- **高性能**：所有操作都在内存中完成，无 I/O 开销
+- **简单**：无需配置数据库
+- **非持久化**：应用重启后数据丢失
+- **适用场景**：开发测试、临时任务、不需要持久化的场景
+
+## TerracottaJobStore
+
+`TerracottaJobStore` 是一种基于 Terracotta 分布式缓存技术的 JobStore 实现。
+
+### 特点
+
+- **分布式存储**：利用 Terracotta 提供分布式内存存储
+- **高可用性**：支持集群，具有故障转移能力
+- **高性能**：比 JDBC 存储性能更好，接近内存存储
+- **持久化**：支持数据持久化，应用重启后数据不丢失
+- **适用场景**：需要高性能且支持集群的大规模部署
+
+## 各实现对比
+
+### JobStoreTX 与 JobStoreCMT 对比
+
 | 特性 | JobStoreTX | JobStoreCMT |
 |------|------------|-------------|
 | 环境 | 独立应用 | 应用服务器 |
@@ -162,12 +197,25 @@ JobStoreTX与JobStoreCMT的主要区别：
 | 事务控制 | 显式commit/rollback | 依赖容器 |
 | 复杂度 | 较低 | 较高 |
 
+### 所有 JobStore 性能与功能对比
+
+| 特性 | RAMJobStore | JobStoreTX/CMT | TerracottaJobStore |
+|------|-------------|----------------|-------------------|
+| 性能 | 最高 | 较低 | 高 |
+| 持久化 | 否 | 是 | 是 |
+| 集群支持 | 否 | 是 | 是 |
+| 配置复杂度 | 低 | 高 | 中 |
+| 资源消耗 | 内存 | 数据库 | 分布式缓存 |
+| 适用场景 | 单机、测试 | 企业级应用 | 高性能集群 |
+
+## 选择建议
+
 在 SpringBoot 微服务环境中：
 
-- JobStoreTX 通常是更好的选择，因为它：
+- **JobStoreTX** 通常是更好的选择，因为它：
   - 自行管理事务，不依赖容器
   - 配置更简单直接
   - 更符合微服务的独立性原则
-- 只有在特定场景（如部署在完整 Java EE 应用服务器、需要 JTA 事务）下才考虑 JobStoreCMT
-
-无论选择哪种实现，都应确保正确配置数据源和事务管理，以确保 Quartz 作业的可靠执行
+- 只有在特定场景（如部署在完整 Java EE 应用服务器、需要 JTA 事务）下才考虑 **JobStoreCMT**
+- 对于高性能需求且有集群要求的场景，可以考虑 **TerracottaJobStore**
+- 对于简单应用或开发测试，**RAMJobStore** 是最简单的选择

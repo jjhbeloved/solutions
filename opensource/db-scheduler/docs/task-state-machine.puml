@@ -1,0 +1,93 @@
+@startuml db-scheduler任务状态机
+
+!theme plain
+skinparam state {
+  BackgroundColor #f5f5f5
+  BorderColor #666666
+  ArrowColor #666666
+  StartColor #445588
+  EndColor #445588
+}
+
+title db-scheduler任务状态机图
+
+[*] --> 已创建 : 创建Task定义
+已创建 --> 已注册 : 通过scheduler.register()注册
+已注册 --> 已调度 : 通过scheduler.schedule()调度
+已调度 --> 已锁定 : 调度器拾取并锁定任务\n(picked=true)
+已锁定 --> 执行中 : 提交到执行线程池
+执行中 --> 执行中 : 心跳更新\n(updateHeartbeat)
+
+state 执行中 {
+  [*] --> 任务运行
+  任务运行 --> 完成
+  任务运行 --> 异常
+  完成 --> [*] : 返回
+  异常 --> [*] : 抛出异常
+}
+
+执行中 -down-> 执行成功 : 执行完成无异常
+执行成功 --> 已删除 : 一次性任务\n从数据库删除
+执行成功 -left-> 已调度 : 周期性任务\n计算下次执行时间
+
+执行中 -down-> 执行失败 : 执行抛出异常
+执行失败 --> 失败处理 : 调用onFailure
+
+state 失败处理 {
+  [*] --> 处理中
+  处理中 --> 决定重试 : 执行次数<阈值
+  处理中 --> 决定放弃 : 执行次数>=阈值\n或错误类型不可重试
+  决定重试 --> [*]
+  决定放弃 --> [*]
+}
+
+失败处理 -down-> 已重新调度 : reschedule()
+已重新调度 -up-> 已调度 : 更新执行时间\nconsecut_failures+1
+
+失败处理 -down-> 已删除 : delete()
+
+已锁定 -right-> 死亡执行 : 心跳超时\n节点崩溃
+死亡执行 -down-> 死亡执行处理 : 调用onDeadExecution
+
+state 死亡执行处理 {
+  [*] --> 检查状态
+  检查状态 --> 决定重新执行 : 可以安全重试
+  检查状态 --> 决定放弃执行 : 状态不明确或\n需人工干预
+  决定重新执行 --> [*]
+  决定放弃执行 --> [*]
+}
+
+死亡执行处理 -right-> 已重新调度 : reschedule()
+死亡执行处理 -down-> 已删除 : delete()
+
+已删除 --> [*]
+
+note right of 已调度
+  状态存储在数据库中:
+  picked=false
+  execution_time=设定时间
+end note
+
+note right of 已锁定
+  picked=true
+  picked_by=节点ID
+  last_heartbeat=当前时间
+end note
+
+note right of 执行中
+  持续更新last_heartbeat
+  防止被判定为死亡执行
+end note
+
+note bottom of 死亡执行
+  picked=true
+  last_heartbeat < now() - 阈值
+  心跳更新停止
+end note
+
+note left of 已重新调度
+  consecutive_failures字段
+  记录连续失败次数
+end note
+
+@enduml 

@@ -1,0 +1,51 @@
+ @startuml
+!theme plain
+skinparam activityBackgroundColor #F8F9FA
+skinparam activityBorderColor #DEE2E6
+skinparam arrowColor #495057
+
+start
+
+:触发器触发;
+
+:创建新的Job实例;
+
+:创建JobExecutionContext;
+
+:调用JobListener.jobToBeExecuted();
+
+if (任务被否决?) then (是)
+  :调用JobListener.jobExecutionVetoed();
+else (否)
+  :调用Job.execute(context);
+  
+  if (执行过程中出现异常?) then (是)
+    if (是JobExecutionException?) then (是)
+      if (设置了refireImmediately?) then (是)
+        :立即重新触发;
+      endif
+      
+      if (设置了unscheduleFiringTrigger?) then (是)
+        :取消当前触发器;
+      endif
+      
+      if (设置了unscheduleAllTriggers?) then (是)
+        :取消所有相关触发器;
+      endif
+    else (否)
+      :包装为JobExecutionException;
+    endif
+  endif
+  
+  :调用JobListener.jobWasExecuted();
+  
+  if (使用了@PersistJobDataAfterExecution?) then (是)
+    :保存JobDataMap的更改;
+  endif
+endif
+
+:释放Job实例引用;
+
+stop
+
+@enduml

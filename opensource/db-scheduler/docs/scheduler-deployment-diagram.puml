@@ -1,0 +1,88 @@
+@startuml db-scheduler集群部署
+
+!theme plain
+skinparam linetype ortho
+skinparam componentStyle rectangle
+
+title db-scheduler集群部署架构
+
+cloud "应用集群" {
+  node "应用节点1" as node1 {
+    component "应用服务1" as app1
+    component "db-scheduler实例1" as scheduler1 {
+      component "任务执行线程池" as pool1
+      component "心跳更新器" as heartbeat1
+      component "任务轮询器" as poller1
+    }
+  }
+  
+  node "应用节点2" as node2 {
+    component "应用服务2" as app2
+    component "db-scheduler实例2" as scheduler2 {
+      component "任务执行线程池" as pool2
+      component "心跳更新器" as heartbeat2
+      component "任务轮询器" as poller2
+    }
+  }
+  
+  node "应用节点3" as node3 {
+    component "应用服务3" as app3
+    component "db-scheduler实例3" as scheduler3 {
+      component "任务执行线程池" as pool3
+      component "心跳更新器" as heartbeat3
+      component "任务轮询器" as poller3
+    }
+  }
+  
+  node "管理员节点" as adminNode {
+    component "管理员db-scheduler" as adminScheduler {
+      component "集群监控" as monitor
+      component "恢复处理器" as recovery
+    }
+  }
+}
+
+database "共享数据库" as db {
+  frame "scheduled_tasks表" as table {
+    [task_name]
+    [task_instance]
+    [task_data]
+    [execution_time]
+    [picked]
+    [picked_by]
+    [last_heartbeat]
+    [consecutive_failures]
+    [priority]
+  }
+}
+
+app1 ..> scheduler1 : 提交任务
+app2 ..> scheduler2 : 提交任务
+app3 ..> scheduler3 : 提交任务
+
+scheduler1 -down-> db : 轮询和执行
+scheduler2 -down-> db : 轮询和执行
+scheduler3 -down-> db : 轮询和执行
+adminScheduler -down-> db : 监控和恢复
+
+note right of db
+  共享数据库表作为任务协调中心，
+  所有调度器实例通过它实现分布式协作
+end note
+
+note left of adminNode
+  管理员节点独立部署，
+  用于监控集群健康状态
+  和处理全集群故障情况
+end note
+
+legend right
+  |= 组件 |= 功能 |
+  | 任务轮询器 | 定期检查待执行任务 |
+  | 心跳更新器 | 维护执行中任务的活跃状态 |
+  | 任务执行线程池 | 并发执行已锁定的任务 |
+  | 集群监控 | 检测调度器节点健康状态 |
+  | 恢复处理器 | 处理故障节点留下的任务 |
+endlegend
+
+@enduml 

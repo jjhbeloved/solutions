@@ -1,0 +1,59 @@
+ @startuml
+!theme plain
+skinparam sequenceArrowThickness 2
+skinparam sequenceGroupBorderColor #495057
+skinparam sequenceGroupBackgroundColor #F8F9FA
+skinparam sequenceLifeLineBorderColor #DEE2E6
+
+participant "Scheduler" as scheduler
+participant "JobFactory" as factory
+participant "JobListener" as listener
+participant "Job" as job
+participant "JobExecutionContext" as context
+
+== 任务调度 ==
+
+scheduler -> scheduler : 触发器触发
+
+scheduler -> factory : newJob(bundle, scheduler)
+activate factory
+factory --> scheduler : 创建新的Job实例
+deactivate factory
+
+scheduler -> context : 创建执行上下文
+activate context
+context --> scheduler : 返回上下文
+deactivate context
+
+scheduler -> listener : jobToBeExecuted(context)
+activate listener
+listener --> scheduler : 处理前置事件
+deactivate listener
+
+alt 任务被否决
+    scheduler -> listener : jobExecutionVetoed(context)
+    activate listener
+    listener --> scheduler : 处理否决事件
+    deactivate listener
+else 任务正常执行
+    scheduler -> job : execute(context)
+    activate job
+    
+    alt 执行成功
+        job --> scheduler : 正常完成
+    else 执行异常
+        job --> scheduler : 抛出JobExecutionException
+    end
+    deactivate job
+    
+    scheduler -> listener : jobWasExecuted(context, exception)
+    activate listener
+    listener --> scheduler : 处理后置事件
+    deactivate listener
+end
+
+== 任务清理 ==
+
+scheduler -> scheduler : 释放Job实例引用
+
+@enduml

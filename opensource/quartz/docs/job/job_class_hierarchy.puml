@@ -1,0 +1,153 @@
+ @startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam classBackgroundColor #F8F9FA
+skinparam classBorderColor #DEE2E6
+
+interface Job {
+  +execute(context: JobExecutionContext): void
+}
+
+class JobDetail {
+  +getKey(): JobKey
+  +getDescription(): String
+  +getJobClass(): Class<? extends Job>
+  +getJobDataMap(): JobDataMap
+  +isDurable(): boolean
+  +isPersistJobDataAfterExecution(): boolean
+  +isConcurrentExectionDisallowed(): boolean
+  +requestsRecovery(): boolean
+}
+
+class JobKey {
+  -name: String
+  -group: String
+  +getName(): String
+  +getGroup(): String
+  +{static} jobKey(name: String): JobKey
+  +{static} jobKey(name: String, group: String): JobKey
+}
+
+class JobDataMap {
+  +put(key: String, value: Object): Object
+  +get(key: String): Object
+  +getInt(key: String): int
+  +getString(key: String): String
+  +getBoolean(key: String): boolean
+  +getLong(key: String): long
+  +getFloat(key: String): float
+  +getDouble(key: String): double
+}
+
+class JobBuilder {
+  -key: JobKey
+  -description: String
+  -jobClass: Class<? extends Job>
+  -durability: boolean
+  -recovery: boolean
+  -jobDataMap: JobDataMap
+  +{static} newJob(): JobBuilder
+  +{static} newJob(jobClass: Class<? extends Job>): JobBuilder
+  +withIdentity(name: String): JobBuilder
+  +withIdentity(name: String, group: String): JobBuilder
+  +withIdentity(key: JobKey): JobBuilder
+  +withDescription(description: String): JobBuilder
+  +storeDurably(): JobBuilder
+  +storeDurably(durability: boolean): JobBuilder
+  +requestRecovery(): JobBuilder
+  +requestRecovery(recovery: boolean): JobBuilder
+  +usingJobData(key: String, value: Object): JobBuilder
+  +usingJobData(newJobDataMap: JobDataMap): JobBuilder
+  +ofType(jobClass: Class<? extends Job>): JobBuilder
+  +build(): JobDetail
+}
+
+class JobExecutionContext {
+  +getScheduler(): Scheduler
+  +getTrigger(): Trigger
+  +getCalendar(): Calendar
+  +isRecovering(): boolean
+  +getFireTime(): Date
+  +getScheduledFireTime(): Date
+  +getPreviousFireTime(): Date
+  +getNextFireTime(): Date
+  +getJobDetail(): JobDetail
+  +getJobInstance(): Job
+  +getJobRunTime(): long
+  +getResult(): Object
+  +setResult(result: Object): void
+  +getMergedJobDataMap(): JobDataMap
+}
+
+class JobExecutionException {
+  -refireImmediately: boolean
+  -unscheduleAllTriggers: boolean
+  -unscheduleFiringTrigger: boolean
+  +JobExecutionException()
+  +JobExecutionException(msg: String)
+  +JobExecutionException(cause: Throwable)
+  +JobExecutionException(msg: String, cause: Throwable)
+  +refireImmediately(): boolean
+  +setRefireImmediately(refire: boolean): void
+  +unscheduleFiringTrigger(): boolean
+  +setUnscheduleFiringTrigger(unschedule: boolean): void
+  +unscheduleAllTriggers(): boolean
+  +setUnscheduleAllTriggers(unschedule: boolean): void
+}
+
+interface JobFactory {
+  +newJob(bundle: TriggerFiredBundle, scheduler: Scheduler): Job
+}
+
+class SimpleJobFactory {
+  +newJob(bundle: TriggerFiredBundle, scheduler: Scheduler): Job
+}
+
+interface JobListener {
+  +getName(): String
+  +jobToBeExecuted(context: JobExecutionContext): void
+  +jobExecutionVetoed(context: JobExecutionContext): void
+  +jobWasExecuted(context: JobExecutionContext, jobException: JobExecutionException): void
+}
+
+annotation DisallowConcurrentExecution
+annotation PersistJobDataAfterExecution
+
+Job <-- JobDetail : references
+JobDetail --> JobKey : has
+JobDetail --> JobDataMap : has
+JobBuilder --> JobDetail : builds
+JobExecutionContext --> JobDetail : references
+JobExecutionContext --> Job : references
+Job <-- JobExecutionException : thrown by
+JobFactory --> Job : creates
+JobFactory <|.. SimpleJobFactory
+JobListener --> Job : monitors
+Job <.. DisallowConcurrentExecution : annotates
+Job <.. PersistJobDataAfterExecution : annotates
+
+note bottom of Job
+  核心接口，定义了任务的执行方法
+end note
+
+note bottom of JobDetail
+  包含任务的配置信息和元数据
+end note
+
+note bottom of JobDataMap
+  存储任务参数和状态的特殊Map
+end note
+
+note bottom of JobExecutionContext
+  提供任务执行时的上下文信息
+end note
+
+note right of DisallowConcurrentExecution
+  防止同一个JobDetail的多个实例并发执行
+end note
+
+note right of PersistJobDataAfterExecution
+  执行后保存JobDataMap的更改
+end note
+@enduml

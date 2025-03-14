@@ -1,0 +1,55 @@
+ @startuml
+!theme plain
+skinparam componentStyle rectangle
+skinparam componentBackgroundColor #F8F9FA
+skinparam componentBorderColor #DEE2E6
+skinparam arrowColor #495057
+
+component "节点A" {
+  [调度器A] as SchedulerA
+  [线程池A] as ThreadPoolA
+  [JobFactory A] as FactoryA
+}
+
+component "节点B" {
+  [调度器B] as SchedulerB
+  [线程池B] as ThreadPoolB
+  [JobFactory B] as FactoryB
+}
+
+database "共享数据库" {
+  [QRTZ_JOB_DETAILS] as JobDetails
+  [QRTZ_TRIGGERS] as Triggers
+  [QRTZ_FIRED_TRIGGERS] as FiredTriggers
+  [QRTZ_SCHEDULER_STATE] as SchedulerState
+}
+
+SchedulerA --> JobDetails : 读取作业定义
+SchedulerB --> JobDetails : 读取作业定义
+
+SchedulerA --> Triggers : 获取触发器
+SchedulerB --> Triggers : 获取触发器
+
+SchedulerA --> FiredTriggers : 记录执行状态
+SchedulerB --> FiredTriggers : 记录执行状态
+
+SchedulerA --> SchedulerState : 更新心跳
+SchedulerB --> SchedulerState : 更新心跳
+
+SchedulerA --> ThreadPoolA : 提交作业
+SchedulerB --> ThreadPoolB : 提交作业
+
+ThreadPoolA --> FactoryA : 创建Job实例
+ThreadPoolB --> FactoryB : 创建Job实例
+
+note bottom of FiredTriggers
+  记录哪个节点正在执行哪个作业
+  防止同一作业被多个节点执行
+end note
+
+note bottom of SchedulerState
+  记录节点心跳
+  用于故障检测和恢复
+end note
+
+@enduml

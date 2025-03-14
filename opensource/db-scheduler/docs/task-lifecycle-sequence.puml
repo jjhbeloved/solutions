@@ -1,0 +1,153 @@
+@startuml db-scheduler任务生命周期
+
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam sequenceGroupBackgroundColor #f5f5f5
+skinparam sequenceGroupBorderColor #d0d0d0
+skinparam sequenceBoxBackgroundColor #e6f2ff
+skinparam sequenceBoxBorderColor #a6c5e0
+skinparam sequenceParticipantBackgroundColor #e6f2ff
+skinparam sequenceParticipantBorderColor #1a8cff
+
+title db-scheduler任务生命周期序列图
+
+actor "应用程序" as App
+participant "Scheduler" as Scheduler
+participant "SchedulerClient" as Client
+participant "TaskRepository" as Repo
+participant "Task实现" as Task
+participant "ExecutionContext" as Context
+database "数据库" as DB
+
+group 1. 任务注册阶段
+    App -> App: 创建Task定义
+    Note right: 定义任务逻辑、错误处理等
+    
+    App -> Scheduler ++: register(task)
+    Scheduler -> Scheduler: 存储Task引用
+    return 任务注册完成
+end
+
+group 2. 任务调度阶段
+    App -> Client ++: schedule(taskInstance, executionTime)
+    Note right: 创建任务实例，设置执行时间
+    
+    Client -> Repo ++: createIfNotExists(taskInstance, executionTime)
+    Repo -> DB ++: INSERT INTO scheduled_tasks\n(task_name, task_instance, execution_time, task_data)
+    DB --> Repo --: 插入结果
+    return 创建结果
+    return 调度完成
+end
+
+group 3. 任务获取阶段
+    Scheduler -> Scheduler ++: 轮询检查待执行任务
+    Scheduler -> Repo ++: getScheduledExecutions(limit)
+    Repo -> DB ++: SELECT * FROM scheduled_tasks\nWHERE picked = false AND execution_time <= NOW()\nORDER BY priority DESC, execution_time ASC\nLIMIT ?
+    DB --> Repo --: 返回待执行任务列表
+    return 待执行任务列表
+    
+    loop 对每个待执行任务
+        Scheduler -> Repo ++: tryLock(execution)
+        Repo -> DB ++: UPDATE scheduled_tasks\nSET picked = true, picked_by = ?, last_heartbeat = NOW()\nWHERE task_name = ? AND id = ? AND picked = false
+        DB --> Repo --: 更新结果
+        return 锁定结果
+        
+        alt 成功锁定任务
+            Scheduler -> Scheduler: 创建执行上下文
+            Scheduler -> Scheduler: 提交到执行线程池
+        end
+    end
+    return 轮询完成
+end
+
+group 4. 任务执行阶段
+    Scheduler -> Task ++: execute(taskInstance, executionContext)
+    activate Scheduler
+    
+    Scheduler -> Scheduler ++: 启动心跳线程
+    
+    loop 任务执行期间
+        Scheduler -> Context ++: updateHeartbeat()
+        Context -> Repo ++: updateHeartbeat(execution)
+        Repo -> DB ++: UPDATE scheduled_tasks\nSET last_heartbeat = NOW()\nWHERE task_name = ? AND id = ? AND picked = true
+        DB --> Repo --: 更新结果
+        return 心跳更新完成
+        return 心跳更新
+        
+        ... 任务执行中 ...
+    end
+    
+    Task --> Scheduler --: 执行完成
+    deactivate Scheduler
+    Scheduler -> Scheduler --: 停止心跳线程
+end
+
+group 5. 任务完成阶段
+    alt 执行成功 (OneTimeTask)
+        Scheduler -> Repo ++: complete(execution, ExecutionComplete.success())
+        Repo -> DB ++: DELETE FROM scheduled_tasks\nWHERE task_name = ? AND id = ?
+        DB --> Repo --: 删除结果
+        return 完成处理
+        
+    else 执行成功 (RecurringTask)
+        Scheduler -> Task ++: getSchedule()
+        Task --> Scheduler --: Schedule实例
+        
+        Scheduler -> Scheduler: 计算下次执行时间
+        Scheduler -> Repo ++: complete(execution, ExecutionComplete.success())
+        Repo -> DB ++: UPDATE scheduled_tasks\nSET picked = false, picked_by = null,\nexecution_time = ?\nWHERE task_name = ? AND id = ?
+        Note right: 更新下次执行时间
+        DB --> Repo --: 更新结果
+        return 完成处理
+        
+    else 执行失败
+        Scheduler -> Task ++: onFailure(executionComplete, executionOperations)
+        Note right: 调用自定义失败处理逻辑
+        Task --> Scheduler --: 失败处理结果
+        
+        alt 重试任务
+            Scheduler -> Repo ++: reschedule(execution, newTime)
+            Repo -> DB ++: UPDATE scheduled_tasks\nSET picked = false, picked_by = null,\nconsecutive_failures = consecutive_failures + 1,\nexecution_time = ?\nWHERE task_name = ? AND id = ?
+            DB --> Repo --: 更新结果
+            return 重新调度完成
+            
+        else 放弃执行
+            Scheduler -> Repo ++: complete(execution, ExecutionComplete.failure())
+            Repo -> DB ++: DELETE FROM scheduled_tasks\nWHERE task_name = ? AND id = ?
+            Note right: 或标记为失败并保留记录
+            DB --> Repo --: 操作结果
+            return 完成处理
+        end
+    end
+end
+
+group 6. 死亡执行处理阶段 (节点故障场景)
+    Note over Scheduler, DB: 假设执行任务的节点崩溃
+    
+    Scheduler -> Repo ++: getDeadExecutions()
+    Repo -> DB ++: SELECT * FROM scheduled_tasks\nWHERE picked = true AND last_heartbeat < ?
+    Note right: 超时时间 = now() - (heartbeatInterval * missedHeartbeatLimit)
+    DB --> Repo --: 死亡执行列表
+    return 死亡执行列表
+    
+    loop 处理每个死亡执行
+        Scheduler -> Task ++: onDeadExecution(execution, executionOperations)
+        Note right: 调用任务的死亡执行处理逻辑
+        Task --> Scheduler --: 处理结果
+        
+        alt 重新调度死亡执行
+            Scheduler -> Repo ++: reschedule(execution, newTime)
+            Repo -> DB ++: UPDATE scheduled_tasks\nSET picked = false, picked_by = null,\nlast_heartbeat = null, execution_time = ?\nWHERE task_name = ? AND id = ?
+            DB --> Repo --: 更新结果
+            return 重新调度完成
+            
+        else 删除死亡执行
+            Scheduler -> Repo ++: delete(execution)
+            Repo -> DB ++: DELETE FROM scheduled_tasks\nWHERE task_name = ? AND id = ?
+            DB --> Repo --: 删除结果
+            return 删除完成
+        end
+    end
+end
+
+@enduml 

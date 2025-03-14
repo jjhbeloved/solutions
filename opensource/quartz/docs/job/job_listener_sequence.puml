@@ -1,0 +1,63 @@
+ @startuml
+!theme plain
+skinparam sequenceArrowThickness 2
+skinparam sequenceGroupBorderColor #495057
+skinparam sequenceGroupBackgroundColor #F8F9FA
+skinparam sequenceLifeLineBorderColor #DEE2E6
+
+participant "Scheduler" as scheduler
+participant "ListenerManager" as manager
+participant "JobListener" as listener
+participant "Job" as job
+
+== 监听器注册 ==
+
+scheduler -> manager : getListenerManager()
+activate manager
+
+scheduler -> manager : addJobListener(myListener)
+note right: 全局监听器
+
+scheduler -> manager : addJobListener(myListener, KeyMatcher.keyEquals(jobKey))
+note right: 特定作业监听器
+
+scheduler -> manager : addJobListener(myListener, GroupMatcher.groupEquals("myGroup"))
+note right: 作业组监听器
+
+deactivate manager
+
+== 任务执行流程 ==
+
+scheduler -> manager : 通知监听器任务即将执行
+activate manager
+
+manager -> listener : jobToBeExecuted(context)
+activate listener
+listener --> manager : 处理前置事件
+deactivate listener
+
+alt 监听器否决执行
+    manager -> listener : jobExecutionVetoed(context)
+    activate listener
+    listener --> manager : 处理否决事件
+    deactivate listener
+    manager --> scheduler : 返回否决结果
+else 允许执行
+    manager --> scheduler : 允许执行
+    
+    scheduler -> job : execute(context)
+    activate job
+    job --> scheduler : 执行完成或异常
+    deactivate job
+    
+    scheduler -> manager : 通知监听器任务已执行
+    
+    manager -> listener : jobWasExecuted(context, exception)
+    activate listener
+    listener --> manager : 处理后置事件
+    deactivate listener
+end
+
+deactivate manager
+
+@enduml

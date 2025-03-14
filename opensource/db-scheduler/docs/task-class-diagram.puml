@@ -1,0 +1,236 @@
+@startuml db-scheduler任务系统类图
+
+!theme plain
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam classBackgroundColor #f5f5f5
+skinparam classBorderColor #d0d0d0
+skinparam arrowColor #666666
+skinparam stereotypeCBackgroundColor #a0c0ff
+
+title db-scheduler任务系统类图
+
+package "任务定义" {
+  interface Task<T> {
+    + getTaskName(): String
+    + execute(taskInstance: TaskInstance<T>, ctx: ExecutionContext): void
+    + onDeadExecution(execution: Execution, ops: ExecutionOperations): ExecutionComplete
+    + onFailure(executionComplete: ExecutionComplete, ops: ExecutionOperations): ExecutionComplete
+  }
+  
+  class OneTimeTask<T> implements Task {
+    - taskName: String
+    - dataClass: Class<T>
+    - executeFunction: ExecuteFunction<T>
+    - deadExecutionHandler: DeadExecutionHandler
+    - failureHandler: FailureHandler
+    + execute(taskInstance: TaskInstance<T>, ctx: ExecutionContext): void
+  }
+  
+  class RecurringTask<T> implements Task {
+    - taskName: String
+    - dataClass: Class<T>
+    - schedule: Schedule
+    - executeFunction: ExecuteFunction<T>
+    - deadExecutionHandler: DeadExecutionHandler
+    - failureHandler: FailureHandler
+    + execute(taskInstance: TaskInstance<T>, ctx: ExecutionContext): void
+    + getSchedule(): Schedule
+  }
+  
+  class CustomTask<T> implements Task {
+    - taskName: String
+    - dataClass: Class<T>
+    + execute(taskInstance: TaskInstance<T>, ctx: ExecutionContext): void
+    + onDeadExecution(execution: Execution, ops: ExecutionOperations): ExecutionComplete
+  }
+  
+  class Tasks {
+    + {static} oneTime(taskName: String, dataClass: Class<T>): OneTimeTaskBuilder<T>
+    + {static} recurring(taskName: String, schedule: Schedule): RecurringTaskBuilder<T>
+  }
+  
+  class TaskInstance<T> {
+    - taskName: String
+    - id: String
+    - data: T
+    + {static} oneTime(taskName: String, id: String, data: T): TaskInstance<T>
+    + {static} recurring(taskName: String, id: String, data: T): TaskInstance<T>
+    + getTaskName(): String
+    + getId(): String
+    + getData(): T
+  }
+  
+  class TaskData<T> {
+    - data: T
+    - metadata: Map<String, String>
+    + {static} create(data: T): TaskData<T>
+    + withMetadata(key: String, value: String): TaskData<T>
+  }
+  
+  interface ExecuteFunction<T> {
+    + execute(taskInstance: TaskInstance<T>, executionContext: ExecutionContext): void
+  }
+  
+  interface DeadExecutionHandler {
+    + handle(execution: Execution, executionOperations: ExecutionOperations): ExecutionComplete
+  }
+  
+  interface FailureHandler {
+    + handle(executionComplete: ExecutionComplete, executionOperations: ExecutionOperations): ExecutionComplete
+  }
+}
+
+package "调度计划" {
+  interface Schedule {
+    + getNextExecutionTime(lastExecution: Instant): Instant
+    + isDeterministic(): boolean
+  }
+  
+  class FixedDelay implements Schedule {
+    - delay: Duration
+    + {static} ofMinutes(minutes: long): FixedDelay
+    + {static} ofHours(hours: long): FixedDelay
+    + {static} ofDays(days: long): FixedDelay
+  }
+  
+  class CronSchedule implements Schedule {
+    - cronExpression: String
+    - timezone: ZoneId
+    + {static} daily(time: LocalTime): CronSchedule
+    + {static} weekly(dayOfWeek: DayOfWeek, time: LocalTime): CronSchedule
+    + {static} parse(cronExpression: String): CronSchedule
+  }
+}
+
+package "执行模型" {
+  class Execution {
+    - taskInstance: TaskInstance<?>
+    - executionTime: Instant
+    - picked: boolean
+    - pickedBy: String
+    - lastHeartbeat: Instant
+    - consecutiveFailures: int
+    + isPicked(): boolean
+    + getExecutionTime(): Instant
+    + getTaskInstance(): TaskInstance<?>
+    + getConsecutiveFailures(): int
+  }
+  
+  class ExecutionComplete {
+    - execution: Execution
+    - result: ExecutionResult
+    - failureInfo: String
+    + {static} success(execution: Execution): ExecutionComplete
+    + {static} failure(execution: Execution, cause: String): ExecutionComplete
+    + getExecution(): Execution
+    + getResult(): ExecutionResult
+    + getFailureInfo(): String
+  }
+  
+  enum ExecutionResult {
+    OK
+    FAILED
+  }
+  
+  interface ExecutionOperations {
+    + reschedule(execution: Execution, newExecutionTime: Instant): ExecutionComplete
+    + reschedule(executionComplete: ExecutionComplete, newExecutionTime: Instant): ExecutionComplete
+    + delete(execution: Execution): ExecutionComplete
+    + delete(executionComplete: ExecutionComplete): ExecutionComplete
+  }
+  
+  class ExecutionContext {
+    + updateHeartbeat(): void
+    + getSchedulerClient(): SchedulerClient
+  }
+}
+
+package "构建器" {
+  class OneTimeTaskBuilder<T> {
+    + onDeadExecution(handler: DeadExecutionHandler): OneTimeTaskBuilder<T>
+    + onFailure(handler: FailureHandler): OneTimeTaskBuilder<T>
+    + execute(executeFunction: ExecuteFunction<T>): OneTimeTask<T>
+  }
+  
+  class RecurringTaskBuilder<T> {
+    + onDeadExecution(handler: DeadExecutionHandler): RecurringTaskBuilder<T>
+    + onFailure(handler: FailureHandler): RecurringTaskBuilder<T>
+    + execute(executeFunction: ExecuteFunction<T>): RecurringTask<T>
+  }
+}
+
+package "调度器" {
+  class Scheduler {
+    - taskRepository: TaskRepository
+    - tasks: Map<String, Task<?>>
+    + register(task: Task<?>): void
+    + getSchedulerClient(): SchedulerClient
+    + start(): void
+    + stop(waitForRunningTasks: boolean): void
+  }
+  
+  class SchedulerClient {
+    + schedule(instance: TaskInstance<?>, executionTime: Instant): void
+    + schedule(instance: TaskInstance<?>, executionTime: Instant, priority: int): void
+    + reschedule(taskName: String, instanceId: String, newExecutionTime: Instant): boolean
+    + cancel(taskName: String, instanceId: String): boolean
+  }
+  
+  class TaskRepository {
+    + createIfNotExists(instance: TaskInstance<?>, executionTime: Instant): boolean
+    + getScheduledExecutions(limit: int): List<Execution>
+    + getDeadExecutions(): List<Execution>
+    + updateHeartbeat(execution: Execution): boolean
+    + complete(execution: Execution, executionComplete: ExecutionComplete): boolean
+  }
+}
+
+' 关系连接
+Task <-- TaskInstance : 引用 >
+RecurringTask o-- Schedule : 使用 >
+Task <|-- OneTimeTask
+Task <|-- RecurringTask
+Task <|-- CustomTask
+
+Tasks ..> OneTimeTaskBuilder : 创建 >
+Tasks ..> RecurringTaskBuilder : 创建 >
+OneTimeTaskBuilder ..> OneTimeTask : 构建 >
+RecurringTaskBuilder ..> RecurringTask : 构建 >
+
+ExecutionContext --> SchedulerClient : 提供访问 >
+
+Execution o-- TaskInstance : 包含 >
+ExecutionComplete o-- Execution : 引用 >
+ExecutionComplete o-- ExecutionResult : 包含 >
+
+TaskInstance o-- TaskData : 可使用 >
+
+Scheduler o-- "n" Task : 注册 >
+Scheduler o-- TaskRepository : 使用 >
+Scheduler ..> SchedulerClient : 创建 >
+Scheduler ..> ExecutionContext : 创建 >
+Scheduler ..|> ExecutionOperations : 实现 >
+
+' 注释
+note bottom of TaskInstance
+  TaskInstance是Task的具体实例，
+  包含执行所需的任务数据
+end note
+
+note bottom of RecurringTask
+  周期性任务通过Schedule接口
+  决定下次执行时间
+end note
+
+note bottom of Execution
+  Execution表示TaskInstance的一次执行，
+  记录执行状态和进度
+end note
+
+note bottom of ExecutionContext
+  ExecutionContext为任务执行提供上下文，
+  允许任务更新心跳、访问调度器等
+end note
+
+@enduml 

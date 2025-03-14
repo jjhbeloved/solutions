@@ -1,0 +1,146 @@
+@startuml db-scheduler 多节点任务获取流程
+
+!define RECTANGLE class
+
+skinparam sequence {
+    ArrowThickness 1.5
+    ArrowColor #1a8cff
+    BorderColor #d9d9d9
+    LifeLineBorderColor #a6a6a6
+    LifeLineBackgroundColor #f2f2f2
+    ParticipantBorderColor #1a8cff
+    ParticipantBackgroundColor #e6f2ff
+    ParticipantFontSize 14
+    ParticipantFontColor #000000
+}
+
+box "调度器集群" #f7f9fb
+participant "节点 A" as NodeA 
+participant "节点 B" as NodeB
+participant "节点 C" as NodeC
+end box
+
+participant "共享数据库\nscheduled_tasks" as DB #f5f5f5
+
+database "任务处理结果存储" as Result #f5f5f5
+
+== 初始化 ==
+
+NodeA -> NodeA: 启动调度器\n配置唯一schedulerName
+NodeB -> NodeB: 启动调度器\n配置唯一schedulerName
+NodeC -> NodeC: 启动调度器\n配置唯一schedulerName
+
+== 轮询任务流程 ==
+
+loop 每个节点按配置的pollingInterval轮询
+    
+    group 节点A轮询周期
+        NodeA -> DB: 查询待执行任务 (picked=false, execution_time<=now)\n按优先级和执行时间排序，限制批量大小
+        DB --> NodeA: 返回符合条件的任务列表
+        
+        loop 处理每个待执行任务
+            NodeA -> DB: 尝试获取任务锁\nUPDATE SET picked=true, picked_by='NodeA', last_heartbeat=now\nWHERE id=taskId AND picked=false
+            
+            alt 成功获取锁 (updated=1)
+                DB --> NodeA: 锁定成功
+                activate NodeA
+                
+                NodeA -> NodeA: 创建心跳线程
+                
+                loop 心跳更新 (直到任务完成)
+                    NodeA ->> DB: 更新心跳 (每heartbeatInterval秒)
+                    note right: UPDATE last_heartbeat=now\nWHERE id=taskId AND picked_by='NodeA'
+                end
+                
+                NodeA -> NodeA: 执行任务逻辑
+                NodeA -> Result: 存储任务执行结果(可选，用于实现幂等性)
+                
+                NodeA -> DB: 更新任务状态为已完成
+                deactivate NodeA
+            else 获取锁失败 (另一节点已锁定或任务已完成)
+                DB --> NodeA: 锁定失败 (updated=0)
+                NodeA -> NodeA: 跳过该任务，尝试下一个
+            end
+        end
+    end
+    
+    group 节点B轮询周期 (并行但可能时间错开)
+        NodeB -> DB: 查询待执行任务
+        DB --> NodeB: 返回符合条件的任务列表
+        
+        loop 处理每个待执行任务
+            NodeB -> DB: 尝试获取任务锁
+            
+            alt 成功获取锁
+                DB --> NodeB: 锁定成功
+                activate NodeB
+                NodeB -> NodeB: 执行任务...(同节点A流程)
+                deactivate NodeB
+            else 获取锁失败
+                DB --> NodeB: 锁定失败
+                NodeB -> NodeB: 跳过该任务
+            end
+        end
+    end
+    
+    group 节点C轮询周期 (并行但可能时间错开)
+        NodeC -> DB: 查询待执行任务
+        DB --> NodeC: 返回符合条件的任务列表
+        note right: 轮询随机抖动减少竞争
+        
+        loop 处理每个待执行任务
+            NodeC -> DB: 尝试获取任务锁
+            
+            alt 成功获取锁
+                DB --> NodeC: 锁定成功
+                activate NodeC
+                NodeC -> NodeC: 执行任务...(同节点A流程)
+                deactivate NodeC
+            else 获取锁失败
+                DB --> NodeC: 锁定失败
+                NodeC -> NodeC: 跳过该任务
+            end
+        end
+    end
+end
+
+== 死亡执行处理流程 ==
+
+group 节点故障场景
+    NodeB -> NodeB: 假设节点B意外崩溃\n(正在执行的任务心跳停止)
+    
+    NodeA -> DB: 检查死亡执行\nSELECT * FROM scheduled_tasks WHERE picked=true AND last_heartbeat < (now - heartbeatInterval*missedHeartbeatLimit)
+    DB --> NodeA: 返回节点B的死亡执行任务
+    
+    loop 处理每个死亡执行
+        alt 一次性任务
+            NodeA -> DB: 重置任务状态\nUPDATE SET picked=false, picked_by=null, last_heartbeat=null, execution_time=now
+            note right: 任务将在下一个轮询周期被重新执行
+        else 周期性任务
+            NodeA -> DB: 重置任务状态并计算下次执行时间
+        else 自定义恢复策略
+            NodeA -> DB: 应用onDeadExecution定义的恢复策略
+        end
+    end
+    
+    group 新一轮轮询
+        NodeA -> DB: 查询待执行任务(包括刚恢复的任务)
+        NodeC -> DB: 查询待执行任务
+        
+        note over NodeA, NodeC: 恢复的任务将被某个活跃节点获取并执行
+    end
+end
+
+== 任务被执行且不会丢失的保证 ==
+
+note over NodeA, NodeC
+通过以下机制确保任务不会漏数据、足够负载且不会并发执行:
+1. 数据库作为集中协调点，所有任务状态都记录在数据库
+2. 乐观锁(UPDATE WHERE picked=false)确保一个任务最多被一个节点获取
+3. 心跳机制使得节点故障可被检测
+4. 死亡执行处理确保节点崩溃时任务被恢复执行
+5. 自动负载均衡: 每个节点独立轮询和获取任务
+6. 幂等设计: 任务应设计为幂等操作，防止重复执行带来问题
+end note
+
+@enduml 

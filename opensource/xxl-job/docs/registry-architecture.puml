@@ -1,0 +1,71 @@
+@startuml XXL-JOB注册中心高可用架构
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+
+/' 定义组件 '/
+component "负载均衡器\n(Nginx/LVS)" as LB
+package "调度中心集群" {
+  component "调度中心节点1" as Admin1
+  component "调度中心节点2" as Admin2
+  component "调度中心节点3" as Admin3
+}
+
+database "共享数据库\nMySQL" as DB {
+  folder "xxl_job_registry表" as RegTable
+  folder "xxl_job_group表" as GroupTable
+  folder "xxl_job_lock表" as LockTable
+}
+
+package "执行器集群1\n(appname=app1)" {
+  component "执行器节点1.1" as Executor1_1
+  component "执行器节点1.2" as Executor1_2
+}
+
+package "执行器集群2\n(appname=app2)" {
+  component "执行器节点2.1" as Executor2_1
+  component "执行器节点2.2" as Executor2_2
+}
+
+/' 定义连接关系 '/
+' 客户端访问
+LB --> Admin1
+LB --> Admin2
+LB --> Admin3
+
+' 数据库连接
+Admin1 --> DB
+Admin2 --> DB
+Admin3 --> DB
+
+' 执行器注册
+Executor1_1 -up-> Admin1 : 注册/心跳
+Executor1_1 -up-> Admin2 : 注册/心跳
+Executor1_1 -up-> Admin3 : 注册/心跳
+
+Executor1_2 -up-> Admin1 : 注册/心跳
+Executor1_2 -up-> Admin2 : 注册/心跳
+Executor1_2 -up-> Admin3 : 注册/心跳
+
+Executor2_1 -up-> Admin1 : 注册/心跳
+Executor2_1 -up-> Admin2 : 注册/心跳
+Executor2_1 -up-> Admin3 : 注册/心跳
+
+Executor2_2 -up-> Admin1 : 注册/心跳
+Executor2_2 -up-> Admin2 : 注册/心跳
+Executor2_2 -up-> Admin3 : 注册/心跳
+
+note right of DB
+  数据库作为共享存储
+  实现调度中心节点间的数据同步
+  使得任意节点故障不影响整体可用性
+end note
+
+note right of Executor1_1
+  执行器向所有调度中心节点注册
+  保证高可用，任一节点可用
+  即可保证正常工作
+end note
+
+@enduml 

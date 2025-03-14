@@ -1,0 +1,125 @@
+@startuml XXL-JOB组件类关系图
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+
+' 定义组件
+package "调度中心" {
+  class AdminBiz <<interface>> {
+    +registry(RegistryParam registryParam): ReturnT
+    +registryRemove(RegistryParam registryParam): ReturnT
+    +callback(HandleCallbackParam callbackParam): ReturnT
+    ...
+  }
+  
+  class JobRegistryHelper {
+    -registryOrRemoveThreadPool: ThreadPoolExecutor
+    -registryMonitorThread: Thread
+    -toStop: boolean
+    +start(): void
+    +toStop(): void
+    +registry(RegistryParam registryParam): ReturnT
+    +registryRemove(RegistryParam registryParam): ReturnT
+    -freshGroupRegistryInfo(RegistryParam registryParam): void
+  }
+  
+  class XxlJobAdminConfig {
+    -xxlJobRegistryDao: XxlJobRegistryDao
+    -xxlJobGroupDao: XxlJobGroupDao
+    ...
+  }
+  
+  class XxlJobRegistryDao {
+    +registrySaveOrUpdate(group, key, value, updateTime): int
+    +registryDelete(group, key, value): int
+    +findDead(timeout, nowTime): List<Integer>
+    +removeDead(ids): int
+    +findAll(timeout, nowTime): List<XxlJobRegistry>
+  }
+  
+  class XxlJobGroupDao {
+    +findByAddressType(addressType): List<XxlJobGroup>
+    +update(XxlJobGroup group): int
+    ...
+  }
+  
+  AdminBiz <-- JobRegistryHelper: 实现接口
+  JobRegistryHelper --> XxlJobAdminConfig: 获取配置
+  XxlJobAdminConfig --> XxlJobRegistryDao: 包含
+  XxlJobAdminConfig --> XxlJobGroupDao: 包含
+}
+
+package "执行器" {
+  class XxlJobExecutor {
+    -adminBizList: List<AdminBiz>
+    -embedServer: EmbedServer
+    +start(): void
+    ...
+  }
+  
+  class EmbedServer {
+    +start(address, port, appname, accessToken): void
+    +startRegistry(appname, address): void
+    ...
+  }
+  
+  class ExecutorRegistryThread {
+    -registryThread: Thread
+    -toStop: boolean
+    +start(appname, address): void
+    +toStop(): void
+  }
+  
+  class RegistryParam {
+    -registryGroup: String
+    -registryKey: String
+    -registryValue: String
+  }
+  
+  XxlJobExecutor --> EmbedServer: 包含
+  EmbedServer --> ExecutorRegistryThread: 使用
+  ExecutorRegistryThread --> RegistryParam: 创建
+}
+
+database "数据库" {
+  class XxlJobRegistry <<table>> {
+    +id: int
+    +registry_group: String
+    +registry_key: String
+    +registry_value: String
+    +update_time: Date
+  }
+  
+  class XxlJobGroup <<table>> {
+    +id: int
+    +app_name: String
+    +title: String
+    +address_type: int
+    +address_list: String
+    +update_time: Date
+  }
+}
+
+' 定义关系
+XxlJobRegistryDao --> XxlJobRegistry: 操作
+XxlJobGroupDao --> XxlJobGroup: 操作
+ExecutorRegistryThread --> AdminBiz: 调用registry和registryRemove
+
+note right of XxlJobRegistry
+  注册中心是内嵌在调度中心内部的功能模块，
+  并非独立的外部服务组件。
+end note
+
+note right of ExecutorRegistryThread
+  执行器启动后，定期向调度中心发送注册请求，
+  实现自动注册。
+end note
+
+note bottom of JobRegistryHelper
+  1. 处理执行器的注册请求
+  2. 定期清理过期的注册信息
+  3. 动态更新执行器组信息
+end note
+
+@enduml 

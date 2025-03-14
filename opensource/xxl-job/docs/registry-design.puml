@@ -1,0 +1,81 @@
+@startuml XXL-JOB注册中心设计
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+
+participant "执行器\n(Executor)" as Executor
+participant "执行器注册线程\n(ExecutorRegistryThread)" as ERThread
+participant "调度中心\n(Admin)" as Admin
+participant "注册助手\n(JobRegistryHelper)" as JRHelper
+database "数据库\n(xxl_job_registry)" as DB
+
+== 执行器启动与注册 ==
+Executor -> ERThread: 1. 启动注册线程
+activate ERThread
+
+loop 定期注册（30秒一次）
+    ERThread -> Admin: 2. 发送注册请求
+    activate Admin
+    Admin -> JRHelper: 3. 处理注册请求
+    activate JRHelper
+    
+    JRHelper -> DB: 4. 保存/更新注册信息
+    DB --> JRHelper: 返回结果
+    
+    JRHelper --> Admin: 返回处理结果
+    deactivate JRHelper
+    Admin --> ERThread: 返回注册结果
+    deactivate Admin
+end
+
+== 执行器心跳与维护 ==
+loop 定期心跳（30秒一次）
+    ERThread -> Admin: 5. 发送心跳(注册请求)
+    activate Admin
+    Admin -> JRHelper: 6. 处理心跳
+    activate JRHelper
+    
+    JRHelper -> DB: 7. 更新时间戳
+    DB --> JRHelper: 返回结果
+    
+    JRHelper --> Admin: 返回处理结果
+    deactivate JRHelper
+    Admin --> ERThread: 返回心跳结果
+    deactivate Admin
+end
+
+== 调度中心维护注册表 ==
+loop 定期清理（每30秒）
+    Admin -> JRHelper: 8. 触发注册表维护
+    activate JRHelper
+    
+    JRHelper -> DB: 9. 查询过期注册(>90秒未更新)
+    DB --> JRHelper: 返回过期记录
+    
+    JRHelper -> DB: 10. 删除过期记录
+    DB --> JRHelper: 返回结果
+    
+    JRHelper -> DB: 11. 更新执行器组地址列表
+    DB --> JRHelper: 返回结果
+    
+    deactivate JRHelper
+end
+
+== 执行器关闭与注销 ==
+Executor -> ERThread: 12. 停止注册线程
+ERThread -> Admin: 13. 发送注销请求
+activate Admin
+Admin -> JRHelper: 14. 处理注销请求
+activate JRHelper
+
+JRHelper -> DB: 15. 删除注册记录
+DB --> JRHelper: 返回结果
+
+JRHelper --> Admin: 返回处理结果
+deactivate JRHelper
+Admin --> ERThread: 返回注销结果
+deactivate Admin
+deactivate ERThread
+
+@enduml 

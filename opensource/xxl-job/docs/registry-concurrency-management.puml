@@ -1,0 +1,136 @@
+@startuml XXL-JOB并发管理机制
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+
+' 定义参与者
+participant "执行器1\n(Executor)" as Exec1
+participant "执行器2\n(Executor)" as Exec2
+participant "调度中心1\n(Admin)" as Admin1
+participant "调度中心2\n(Admin)" as Admin2
+participant "线程池\n(ThreadPool)" as ThreadPool
+database "数据库\n(Database)" as DB
+
+' 注册并发处理
+== 并发注册处理 ==
+
+Exec1 -> Admin1: 注册请求Registry(app1, 192.168.1.1)
+activate Admin1
+Admin1 -> ThreadPool: 异步处理注册请求
+activate ThreadPool
+
+Exec2 -> Admin1: 注册请求Registry(app1, 192.168.1.2)
+Admin1 -> ThreadPool: 异步处理注册请求
+
+ThreadPool -> DB: 保存注册信息
+note right: 使用唯一索引(group,key,value)\n防止重复记录
+activate DB
+DB --> ThreadPool: 返回结果
+deactivate DB
+
+ThreadPool --> Admin1: 处理完成
+deactivate ThreadPool
+Admin1 --> Exec1: 返回成功
+Admin1 --> Exec2: 返回成功
+deactivate Admin1
+
+' 注册信息同步处理
+== 注册信息同步 ==
+
+Exec1 -> Admin1: 心跳请求
+activate Admin1
+Exec1 -> Admin2: 心跳请求
+activate Admin2
+
+Admin1 -> DB: 更新时间戳
+Admin2 -> DB: 更新时间戳
+
+note right of DB
+  数据库作为共享存储
+  实现调度中心节点间的数据同步
+end note
+
+' 展示定期清理过程
+== 注册表维护 (定期执行) ==
+
+Admin1 -> Admin1: 启动监控线程
+Admin1 -> DB: 查询过期注册记录
+activate DB
+DB --> Admin1: 返回过期记录
+deactivate DB
+
+Admin1 -> DB: 删除过期记录
+activate DB
+DB --> Admin1: 操作成功
+deactivate DB
+
+Admin1 -> DB: 更新执行器组地址列表
+activate DB
+DB --> Admin1: 操作成功
+deactivate DB
+
+deactivate Admin1
+deactivate Admin2
+
+' 展示任务并发调度处理
+== 并发任务调度 ==
+
+Admin1 -> DB: 获取调度锁
+activate Admin1
+activate DB
+note right: 使用数据库锁表\n防止任务重复调度
+DB --> Admin1: 获取锁成功
+deactivate DB
+
+Admin2 -> DB: 获取调度锁
+activate Admin2
+activate DB
+DB --> Admin2: 获取锁失败
+deactivate DB
+Admin2 -> Admin2: 跳过本次调度
+deactivate Admin2
+
+Admin1 -> DB: 查询可用执行器
+activate DB
+DB --> Admin1: 返回执行器列表
+deactivate DB
+
+Admin1 -> Admin1: 根据路由策略选择执行器
+Admin1 -> Exec1: 调度任务
+activate Exec1
+Exec1 -> Exec1: 执行任务
+Exec1 --> Admin1: 返回执行结果
+deactivate Exec1
+
+Admin1 -> DB: 释放调度锁
+activate DB
+DB --> Admin1: 释放锁成功
+deactivate DB
+deactivate Admin1
+
+' 执行器任务并发处理
+== 执行器任务并发处理 ==
+
+Admin1 -> Exec1: 任务1
+activate Admin1
+activate Exec1
+Admin1 -> Exec1: 任务2
+Admin1 -> Exec1: 任务3
+
+Exec1 -> Exec1: 创建JobThread处理任务1
+Exec1 -> Exec1: 创建JobThread处理任务2
+Exec1 -> Exec1: 创建JobThread处理任务3
+
+note right of Exec1
+  执行器使用线程池处理并发任务
+  可通过阻塞策略控制任务执行方式
+end note
+
+Exec1 --> Admin1: 返回任务1结果
+Exec1 --> Admin1: 返回任务2结果
+Exec1 --> Admin1: 返回任务3结果
+deactivate Exec1
+deactivate Admin1
+
+@enduml 

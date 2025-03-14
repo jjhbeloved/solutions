@@ -1,0 +1,41 @@
+@startuml XXL-JOB调度中心管理流程
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+
+' 调度中心管理流程
+state "调度中心管理流程" as AdminProcess {
+    state "启动监控线程" as StartMonitor
+    state "扫描过期注册" as ScanExpired
+    state "移除过期注册" as RemoveExpired
+    state "更新地址列表" as UpdateAddress
+
+    StartMonitor --> ScanExpired
+    ScanExpired --> RemoveExpired : 发现过期记录
+    RemoveExpired --> UpdateAddress
+    UpdateAddress --> ScanExpired : 每30秒执行一次
+}
+
+note right of StartMonitor
+  调度中心启动时，初始化JobRegistryHelper
+  并启动注册监控线程registryMonitorThread
+end note
+
+note right of ScanExpired
+  监控线程定期查询数据库，寻找
+  更新时间超过90秒的注册记录
+  (DEAD_TIMEOUT = BEAT_TIMEOUT * 3)
+end note
+
+note right of RemoveExpired
+  从xxl_job_registry表中删除
+  过期的执行器注册记录
+end note
+
+note right of UpdateAddress
+  更新xxl_job_group表中执行器组的地址列表，
+  保证任务调度时能获取到最新的执行器列表
+end note
+
+@enduml 

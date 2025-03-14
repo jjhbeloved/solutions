@@ -1,0 +1,50 @@
+@startuml XXL-JOB注册序列图
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+skinparam sequenceMessageAlign center
+
+actor "系统启动" as Start
+participant "执行器\nXxlJobExecutor" as Executor
+participant "注册线程\nExecutorRegistryThread" as ERT
+participant "调度中心\nAdminBiz" as Admin
+participant "注册助手\nJobRegistryHelper" as JRH
+database "数据库\nXxlJobRegistry" as DB
+
+Start -> Executor: 启动
+activate Executor
+Executor -> ERT: 1. 启动注册线程
+activate ERT
+
+loop 周期性注册/心跳
+  ERT -> ERT: 2. 创建RegistryParam
+  ERT -> Admin: 3. 调用registry(registryParam)
+  activate Admin
+  Admin -> JRH: 4. 处理注册请求
+  activate JRH
+  JRH -> DB: 5. 保存/更新注册信息
+  DB --> JRH: 返回结果
+  JRH -> JRH: 6. 刷新执行器组信息
+  JRH --> Admin: 返回处理结果
+  deactivate JRH
+  Admin --> ERT: 返回注册结果
+  deactivate Admin
+end
+
+' 执行器关闭与注销
+Executor -> ERT: 7. 停止注册线程
+ERT -> Admin: 8. 发送注销请求
+activate Admin
+Admin -> JRH: 9. 处理注销请求
+activate JRH
+JRH -> DB: 10. 删除注册记录
+DB --> JRH: 返回结果
+JRH --> Admin: 返回处理结果
+deactivate JRH
+Admin --> ERT: 返回注销结果
+deactivate Admin
+deactivate ERT
+deactivate Executor
+
+@enduml 

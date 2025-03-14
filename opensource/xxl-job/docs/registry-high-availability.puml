@@ -1,0 +1,158 @@
+@startuml XXL-JOB高可用机制
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+skinparam sequenceMessageAlign center
+
+' 定义参与者
+actor "客户端/用户" as Client
+participant "负载均衡器\n(Nginx/LVS)" as LB
+participant "调度中心1\n(Admin)" as Admin1
+participant "调度中心2\n(Admin)" as Admin2
+participant "调度中心3\n(Admin)" as Admin3
+database "共享数据库\n(Database)" as DB
+participant "执行器1\n(Executor)" as Exec1
+participant "执行器2\n(Executor)" as Exec2
+
+' 正常情况
+== 正常操作流程 ==
+
+Client -> LB: 访问调度中心
+LB -> Admin1: 转发请求
+activate Admin1
+Admin1 -> DB: 查询数据
+activate DB
+DB --> Admin1: 返回数据
+deactivate DB
+Admin1 --> LB: 返回结果
+LB --> Client: 返回结果
+deactivate Admin1
+
+' 执行器注册到多个调度中心
+== 执行器高可用注册 ==
+
+Exec1 -> Admin1: 注册请求
+activate Admin1
+Admin1 -> DB: 保存注册信息
+activate DB
+DB --> Admin1: 保存成功
+deactivate DB
+Admin1 --> Exec1: 返回成功
+deactivate Admin1
+
+Exec1 -> Admin2: 注册请求
+activate Admin2
+Admin2 -> DB: 保存注册信息
+activate DB
+DB --> Admin2: 保存成功
+deactivate DB
+Admin2 --> Exec1: 返回成功
+deactivate Admin2
+
+Exec1 -> Admin3: 注册请求
+activate Admin3
+Admin3 -> DB: 保存注册信息
+activate DB
+DB --> Admin3: 保存成功
+deactivate DB
+Admin3 --> Exec1: 返回成功
+deactivate Admin3
+
+note right of Exec1
+  执行器向所有可用的调度中心节点注册
+  实现注册的高可用性
+end note
+
+' 调度中心节点故障场景
+== 调度中心节点故障 ==
+
+Client -> LB: 访问调度中心
+LB -> Admin1: 转发请求
+activate Admin1
+Admin1 -> Admin1: 内部错误
+Admin1 -->x LB: 连接失败
+deactivate Admin1
+
+LB -> Admin2: 故障转移
+activate Admin2
+Admin2 -> DB: 查询数据
+activate DB
+DB --> Admin2: 返回数据
+deactivate DB
+Admin2 --> LB: 返回结果
+LB --> Client: 返回结果
+deactivate Admin2
+
+note right of LB
+  负载均衡器检测到Admin1节点故障
+  自动切换到Admin2节点
+end note
+
+' 执行器节点故障场景
+== 执行器节点故障 ==
+
+Admin1 -> DB: 获取调度锁
+activate Admin1
+activate DB
+DB --> Admin1: 获取锁成功
+deactivate DB
+
+Admin1 -> DB: 查询可用执行器
+activate DB
+DB --> Admin1: 返回执行器列表(Exec1, Exec2)
+deactivate DB
+
+Admin1 -> Admin1: 选择Exec1执行任务
+Admin1 -> Exec1: 调度任务
+activate Exec1
+Exec1 -> Exec1: 内部错误
+Exec1 -->x Admin1: 连接失败
+deactivate Exec1
+
+Admin1 -> Admin1: 检测到执行器故障
+Admin1 -> Admin1: 路由策略(故障转移)
+Admin1 -> Exec2: 重新调度任务
+activate Exec2
+Exec2 -> Exec2: 执行任务
+Exec2 --> Admin1: 返回结果
+deactivate Exec2
+
+Admin1 -> DB: 释放调度锁
+activate DB
+DB --> Admin1: 释放成功
+deactivate DB
+deactivate Admin1
+
+note right of Admin1
+  调度中心检测到执行器故障
+  根据路由策略自动切换到其他执行器
+end note
+
+' 注册表自动维护
+== 注册表自动维护 ==
+
+Admin1 -> Admin1: 监控线程定期运行
+activate Admin1
+Admin1 -> DB: 查询过期注册(>90秒未更新)
+activate DB
+DB --> Admin1: 返回过期记录(Exec1)
+deactivate DB
+
+Admin1 -> DB: 删除过期注册
+activate DB
+DB --> Admin1: 删除成功
+deactivate DB
+
+Admin1 -> DB: 更新执行器组地址列表
+activate DB
+DB --> Admin1: 更新成功
+deactivate DB
+deactivate Admin1
+
+note right of Admin1
+  调度中心自动清理过期注册信息
+  确保执行器列表保持最新状态
+end note
+
+@enduml 

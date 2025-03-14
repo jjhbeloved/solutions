@@ -1,0 +1,78 @@
+@startuml XXL-JOB注册中心工作流程
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+
+' 状态图，展示注册中心的工作流程
+state "执行器未启动" as NotStarted
+state "执行器启动" as Started
+state "注册到调度中心" as Registered
+state "心跳维持" as Heartbeat
+state "执行任务" as Executing
+state "注册超时" as Timeout
+state "从调度中心注销" as Unregistered
+
+' 状态转换
+NotStarted --> Started : 执行器启动
+Started --> Registered : 调用registry方法
+Registered --> Heartbeat : 定期发送心跳
+Heartbeat --> Heartbeat : 每30秒更新时间戳
+Heartbeat --> Executing : 接收任务调度
+Heartbeat --> Timeout : 超过90秒未更新
+Timeout --> Unregistered : 调度中心清理超时记录
+Heartbeat --> Unregistered : 执行器主动调用registryRemove
+Unregistered --> NotStarted : 执行器关闭
+
+' 注册中心数据处理流程
+state "数据处理流程" as DataProcess {
+    state "执行器发送注册请求" as SendRequest
+    state "调度中心接收请求" as ReceiveRequest
+    state "数据保存到注册表" as SaveData
+    state "更新执行器组地址" as UpdateGroup
+    state "响应执行器" as Response
+
+    SendRequest --> ReceiveRequest
+    ReceiveRequest --> SaveData
+    SaveData --> UpdateGroup
+    UpdateGroup --> Response
+    Response --> SendRequest : 周期性执行
+}
+
+' 调度中心管理流程
+state "调度中心管理流程" as AdminProcess {
+    state "启动监控线程" as StartMonitor
+    state "扫描过期注册" as ScanExpired
+    state "移除过期注册" as RemoveExpired
+    state "更新地址列表" as UpdateAddress
+
+    StartMonitor --> ScanExpired
+    ScanExpired --> RemoveExpired : 发现过期记录
+    RemoveExpired --> UpdateAddress
+    UpdateAddress --> ScanExpired : 每30秒执行一次
+}
+
+' 生命周期注释
+note right of Started
+  执行器启动时，初始化EmbedServer
+  并启动ExecutorRegistryThread注册线程
+end note
+
+note right of Registered
+  注册参数包含：
+  - registryGroup: "EXECUTOR"
+  - registryKey: appname (应用名)
+  - registryValue: address (地址)
+end note
+
+note right of Heartbeat
+  心跳实际上是重复执行注册过程
+  更新数据库中的update_time字段
+end note
+
+note right of Timeout
+  超时时间 = DEAD_TIMEOUT = 90秒
+  (BEAT_TIMEOUT * 3)
+end note
+
+@enduml 

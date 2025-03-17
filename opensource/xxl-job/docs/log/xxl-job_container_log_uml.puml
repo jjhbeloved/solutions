@@ -1,0 +1,91 @@
+@startuml xxl-job_container_log_uml
+
+title XXL-JOB容器环境日志流程
+
+actor 用户
+participant "Web界面" as Web
+participant "调度中心\n(xxl-job-admin)" as Admin
+participant "K8s Service\n(xxl-job-executor)" as Service
+participant "执行器Pod 1\n(xxl-job-executor-0)" as Executor1
+participant "执行器Pod 2\n(xxl-job-executor-1)" as Executor2
+database "MySQL数据库" as DB
+database "持久卷\n(PV/PVC)" as PV
+database "对象存储\n(S3/OSS)" as S3
+
+note over Admin, Executor2
+  容器环境日志流程关键点：
+  1. 使用StatefulSet保证Pod名称稳定
+  2. 执行器注册使用Pod名称+Service名称
+  3. 日志写入挂载的持久卷
+  4. 长期保存的日志归档到对象存储
+end note
+
+== 执行器启动与注册 ==
+
+Executor1 -> Executor1: 启动时获取环境变量\n(POD_NAME, SERVICE_NAME)
+Executor1 -> Admin: 注册执行器\n(http://xxl-job-executor-0.xxl-job-executor:8081)
+Admin -> DB: 存储执行器地址信息
+
+Executor2 -> Executor2: 启动时获取环境变量\n(POD_NAME, SERVICE_NAME)
+Executor2 -> Admin: 注册执行器\n(http://xxl-job-executor-1.xxl-job-executor:8081)
+Admin -> DB: 存储执行器地址信息
+
+== 任务调度与日志生成 ==
+
+Admin -> DB: 生成任务日志记录\n(获取日志ID)
+Admin -> Admin: 选择执行器节点\n(基于路由策略)
+Admin -> Executor1: 调度任务执行\n(triggerParam包含日志ID)
+Executor1 -> Executor1: 执行任务
+Executor1 -> PV: 将执行日志写入持久卷\n(/data/applogs/xxl-job/jobhandler/yyyy-MM-dd/logId.log)
+Executor1 -> Admin: 任务执行结果回调\n(包含处理状态)
+Admin -> DB: 更新任务执行状态
+
+== 日志查询(正常情况) ==
+
+用户 -> Web: 请求查看任务日志
+Web -> Admin: 获取日志内容请求
+Admin -> DB: 查询日志元数据\n(获取executor_address)
+Admin -> Executor1: 请求日志内容\n(根据logId和行号)
+Executor1 -> PV: 读取日志文件
+Executor1 -> Admin: 返回日志内容
+Admin -> Web: 展示日志
+Web -> 用户: 显示日志内容
+
+== 容器重启场景 ==
+
+note over Executor1
+  Pod 1重启，数据不丢失
+  (因为日志存储在持久卷中)
+end note
+
+Executor1 -> Executor1: 容器重启
+Executor1 -> Executor1: 获取相同的POD_NAME
+Executor1 -> Admin: 重新注册相同地址
+Admin -> DB: 更新执行器状态为在线
+
+用户 -> Web: 请求查看Pod 1上的历史任务日志
+Web -> Admin: 获取日志内容请求
+Admin -> DB: 查询日志元数据
+Admin -> Executor1: 请求日志内容
+Executor1 -> PV: 读取持久卷中的日志
+Executor1 -> Admin: 返回日志内容
+Admin -> Web: 展示日志
+Web -> 用户: 显示历史日志内容
+
+== 日志归档场景 ==
+
+note over S3
+  定期归档过期日志到对象存储
+end note
+
+Executor1 -> S3: CronJob将过期日志打包归档
+Executor1 -> PV: 清理过期日志文件
+
+用户 -> Web: 请求查看已归档日志
+Web -> Admin: 获取归档日志请求
+Admin -> S3: 查询对象存储中的日志
+S3 -> Admin: 返回归档日志
+Admin -> Web: 展示归档日志
+Web -> 用户: 显示归档日志内容
+
+@enduml 

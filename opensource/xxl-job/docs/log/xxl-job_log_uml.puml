@@ -1,0 +1,200 @@
+@startuml 日志定位机制序列图
+skinparam backgroundColor white
+skinparam handwritten false
+skinparam DefaultFontName Microsoft YaHei
+skinparam SequenceArrowThickness 2
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+!define PRIMARY_COLOR #1976D2
+!define SECONDARY_COLOR #D81B60
+!define SUCCESS_COLOR #43A047
+!define WARNING_COLOR #FFA000
+
+skinparam sequence {
+    ArrowColor PRIMARY_COLOR
+    ActorBorderColor PRIMARY_COLOR
+    LifeLineBorderColor SECONDARY_COLOR
+    ParticipantBorderColor PRIMARY_COLOR
+    ParticipantBackgroundColor white
+    BoxBorderColor SECONDARY_COLOR
+    BoxBackgroundColor white
+}
+
+title XXL-JOB多节点环境日志定位机制
+
+actor "用户" as User
+participant "Web界面" as WebUI
+participant "调度中心" as JobAdmin
+database "数据库" as DB
+collections "执行器集群" as Executors
+
+User -> WebUI: 点击查看任务日志
+WebUI -> JobAdmin: 请求日志数据\n(logId, fromLineNum)
+JobAdmin -> DB: 查询日志元数据\n(SELECT * FROM xxl_job_log WHERE id = ?)
+DB --> JobAdmin: 返回日志记录\n(包含executor_address)
+note right of JobAdmin: 从日志记录中获取执行器地址
+
+JobAdmin -> JobAdmin: 根据executor_address获取执行器实例
+JobAdmin -> Executors: 发送日志查询请求\n(logParam)
+note right of Executors: 执行器根据logId构建日志文件路径\n并读取指定行号后的内容
+
+Executors --> JobAdmin: 返回日志内容\n(LogResult)
+JobAdmin -> JobAdmin: XSS过滤处理
+JobAdmin --> WebUI: 返回日志数据
+WebUI --> User: 显示日志内容
+
+note over Executors
+  如果执行器不可用，调度中心会返回错误信息，
+  提示用户执行器节点可能已下线
+end note
+
+@enduml
+
+@startuml 容器环境日志持久化架构
+skinparam backgroundColor white
+skinparam handwritten false
+skinparam DefaultFontName Microsoft YaHei
+skinparam componentStyle rectangle
+skinparam ArrowThickness 2
+
+!define PRIMARY_COLOR #1976D2
+!define SECONDARY_COLOR #D81B60
+!define SUCCESS_COLOR #43A047
+!define WARNING_COLOR #FFA000
+!define GRAY #DDDDDD
+
+skinparam component {
+    BorderColor PRIMARY_COLOR
+    BackgroundColor white
+}
+
+skinparam database {
+    BorderColor SECONDARY_COLOR
+    BackgroundColor white
+}
+
+skinparam cloud {
+    BorderColor WARNING_COLOR
+    BackgroundColor white
+}
+
+skinparam node {
+    BorderColor SUCCESS_COLOR
+    BackgroundColor white
+}
+
+title XXL-JOB在容器环境中的日志持久化方案
+
+frame "Kubernetes集群" as K8s {
+    node "执行器Pod-1" as Pod1 {
+        component "XXL-JOB执行器" as Executor1
+        file "本地日志\n/data/logs/xxx.log" as Log1
+    }
+    
+    node "执行器Pod-2" as Pod2 {
+        component "XXL-JOB执行器" as Executor2
+        file "本地日志\n/data/logs/xxx.log" as Log2
+    }
+    
+    node "执行器Pod-3" as Pod3 {
+        component "XXL-JOB执行器" as Executor3
+        file "本地日志\n/data/logs/xxx.log" as Log3
+    }
+    
+    cloud "持久化存储" as Storage {
+        database "对象存储/NFS" as NFS
+    }
+    
+    node "调度中心Pod" as AdminPod {
+        component "XXL-JOB调度中心" as Admin
+    }
+    
+    component "K8s Service: xxl-job-executor" as Service
+    database "数据库\n(日志元数据)" as DB
+}
+
+actor "用户" as User
+
+User --> Admin: 查询日志
+Admin --> DB: 获取日志元数据\n(executor_address)
+Admin --> Service: 请求日志内容\n(通过Service名称)
+Service --> Executor1: 路由请求\n(可能)
+Service --> Executor2: 路由请求\n(可能)
+Service --> Executor3: 路由请求\n(可能)
+
+Executor1 --> Log1: 本地读取
+Executor2 --> Log2: 本地读取
+Executor3 --> Log3: 本地读取
+
+Executor1 --> NFS: 备份/读取
+Executor2 --> NFS: 备份/读取
+Executor3 --> NFS: 备份/读取
+
+Admin --> NFS: 回退读取\n(执行器不可用时)
+
+note right of Service
+  Service提供固定访问点，
+  Pod重启IP变更不影响访问
+end note
+
+note right of NFS
+  持久化存储确保日志不会随
+  Pod生命周期结束而丢失
+end note
+
+@enduml
+
+@startuml 日志写入流程时序图
+skinparam backgroundColor white
+skinparam handwritten false
+skinparam DefaultFontName Microsoft YaHei
+skinparam SequenceArrowThickness 2
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+!define PRIMARY_COLOR #1976D2
+!define SECONDARY_COLOR #D81B60
+!define SUCCESS_COLOR #43A047
+!define WARNING_COLOR #FFA000
+
+skinparam sequence {
+    ArrowColor PRIMARY_COLOR
+    ActorBorderColor PRIMARY_COLOR
+    LifeLineBorderColor SECONDARY_COLOR
+    ParticipantBorderColor PRIMARY_COLOR
+    ParticipantBackgroundColor white
+    BoxBorderColor SECONDARY_COLOR
+    BoxBackgroundColor white
+}
+
+title XXL-JOB任务日志写入流程
+
+participant "调度中心" as JobAdmin
+participant "执行器" as Executor
+database "数据库" as DB
+file "本地文件系统" as FileSystem
+cloud "对象存储服务\n(容器环境)" as S3
+
+JobAdmin -> DB: 创建日志元数据记录\n(job_id, trigger_time等)
+DB --> JobAdmin: 返回logId
+
+JobAdmin -> JobAdmin: 生成日志文件名\nmakeLogFileName(triggerDate, logId)
+
+JobAdmin -> Executor: 发送执行请求\n(带logId)
+activate Executor
+
+Executor -> Executor: 处理任务逻辑
+
+Executor -> FileSystem: 记录执行日志\nappendLog(logFileName, content)
+
+alt 容器环境下的持久化方案
+    Executor -> S3: 同步写入日志内容\nappendToObjectStorage(logKey, content)
+end
+
+Executor --> JobAdmin: 返回执行结果
+deactivate Executor
+
+JobAdmin -> DB: 更新任务执行结果\n(handle_code, handle_msg等)
+
+@enduml 

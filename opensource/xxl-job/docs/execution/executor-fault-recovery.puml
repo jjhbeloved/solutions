@@ -1,0 +1,180 @@
+@startuml XXL-JOB执行中心故障发现与恢复机制
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+skinparam sequenceMessageAlign center
+skinparam roundcorner 10
+skinparam noteBorderColor #888888
+skinparam noteBorderThickness 1
+skinparam noteBackgroundColor #EFEFEF
+
+' 定义参与者
+participant "执行器1\n(Executor1)" as Exec1
+participant "执行器2\n(Executor2)" as Exec2
+participant "执行器3\n(Executor3)" as Exec3
+box "调度中心集群" #LightBlue
+participant "调度中心\n(Admin)" as Admin
+database "共享数据库\n(Database)" as DB
+end box
+
+' 标题
+title XXL-JOB执行中心故障发现与恢复机制
+
+== 1. 正常执行器心跳与注册 ==
+
+Exec1 -> Admin: 执行器注册请求 (每30秒一次)
+activate Admin
+Admin -> DB: 保存/更新注册信息
+activate DB
+note right: xxl_job_registry表存储\n执行器的注册信息和时间戳
+DB --> Admin: 保存成功
+deactivate DB
+Admin -> Admin: 更新执行器地址列表
+Admin --> Exec1: 返回注册成功
+deactivate Admin
+
+Exec2 -> Admin: 执行器注册请求 (每30秒一次)
+activate Admin
+Admin -> DB: 保存/更新注册信息
+activate DB
+DB --> Admin: 保存成功
+deactivate DB
+Admin -> Admin: 更新执行器地址列表
+Admin --> Exec2: 返回注册成功
+deactivate Admin
+
+Exec3 -> Admin: 执行器注册请求 (每30秒一次)
+activate Admin
+Admin -> DB: 保存/更新注册信息
+activate DB
+DB --> Admin: 保存成功
+deactivate DB
+Admin -> Admin: 更新执行器地址列表
+Admin --> Exec3: 返回注册成功
+deactivate Admin
+
+note over Exec1, Admin
+  执行器通过ExecutorRegistryThread定期发送心跳(注册请求)
+  心跳周期: 30秒 (BEAT_TIMEOUT)
+  执行器状态由心跳时间戳判断
+end note
+
+== 2. 执行器节点故障场景 ==
+
+' 执行器故障
+Exec2 -[#red]-> Exec2 !! : 异常宕机
+note right of Exec2: 执行器2异常宕机,\n无法发送心跳
+
+' 超时检测
+Admin -> Admin: 调度任务扫描线程运行
+activate Admin
+Admin -> DB: 查询可执行任务
+activate DB
+DB --> Admin: 返回任务信息
+deactivate DB
+
+Admin -> Admin: 执行任务调度
+Admin -> DB: 查询当前可用执行器列表
+activate DB
+DB --> Admin: 返回执行器列表 (Exec1, Exec2, Exec3)
+deactivate DB
+
+Admin -> Exec2: 尝试调度任务
+activate Admin #pink
+note left: 如使用故障转移路由策略
+Admin -> Admin: 连接超时或失败
+Admin -> Exec1: 故障转移,尝试调度任务到其他执行器
+Exec1 --> Admin: 正常响应
+deactivate Admin
+
+note over Admin
+  调度中心通过任务调度时的连接状态
+  来检测执行器节点是否可用
+end note
+
+== 3. 执行器注册过期清理 ==
+
+loop 每30秒执行一次
+  Admin -> Admin: 注册表维护线程运行
+  activate Admin
+  Admin -> DB: 查询过期注册记录 (>90秒未更新)
+  activate DB
+  DB --> Admin: 返回过期记录 (Exec2)
+  deactivate DB
+  
+  Admin -> DB: 删除过期注册记录
+  activate DB
+  note right: 超过90秒(DEAD_TIMEOUT)未发送心跳的\n执行器被视为已下线并清理注册信息
+  DB --> Admin: 删除成功
+  deactivate DB
+  
+  Admin -> DB: 更新执行器组地址列表
+  activate DB
+  DB --> Admin: 更新成功
+  deactivate DB
+  Admin -> Admin: 更新路由表 (仅包含Exec1, Exec3)
+  deactivate Admin
+end
+
+note over Admin, DB
+  调度中心会定期清理过期的执行器注册信息
+  确保路由表中只保留正常工作的执行器
+end note
+
+== 4. 执行器节点恢复 ==
+
+' 执行器恢复
+Exec2 -> Exec2: 重启恢复服务
+note right of Exec2: 执行器2通过k8s、\nsystemd等方式重启
+
+Exec2 -> Exec2: 初始化执行器
+Exec2 -> Exec2: 启动ExecutorRegistryThread注册线程
+
+Exec2 -> Admin: 重新发送注册请求
+activate Admin
+Admin -> DB: 保存/更新注册信息
+activate DB
+DB --> Admin: 保存成功
+deactivate DB
+Admin -> Admin: 更新执行器地址列表
+Admin --> Exec2: 返回注册成功
+deactivate Admin
+
+note over Exec2, Admin
+  重启后的执行器会立即注册到调度中心
+  在下一次任务调度时就可以被选中执行任务
+end note
+
+== 5. 任务执行恢复正常 ==
+
+Admin -> Admin: 调度任务
+activate Admin
+Admin -> DB: 获取执行器地址列表
+activate DB
+DB --> Admin: 返回最新列表 (包含Exec1, Exec2, Exec3)
+deactivate DB
+
+Admin -> Admin: 根据路由策略选择执行器
+note right: 路由策略包括：故障转移、轮询、\n随机、最近最久未使用等
+Admin -> Exec2: 可能将任务调度到恢复的执行器
+Exec2 --> Admin: 正常响应
+
+Admin -> DB: 更新任务状态
+activate DB
+DB --> Admin: 更新成功
+deactivate DB
+deactivate Admin
+
+legend
+  XXL-JOB执行中心故障恢复机制主要依靠:
+  1. 定期心跳机制 - 执行器每30秒发送一次心跳包(注册请求)
+  2. 超时清理机制 - 调度中心清理90秒未活动的执行器注册信息
+  3. 故障转移策略 - 任务调度失败时自动切换到其他可用执行器
+  4. 自动重注册机制 - 执行器重启后自动重新注册到调度中心
+  
+  注意: XXL-JOB本身不负责执行器进程的重启，
+  服务器重启或容器编排系统(如k8s)通常负责这部分工作
+endlegend
+
+@enduml 

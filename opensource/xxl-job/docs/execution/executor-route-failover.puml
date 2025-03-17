@@ -1,0 +1,71 @@
+@startuml XXL-JOB故障转移(FAILOVER)路由策略
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+skinparam sequenceMessageAlign center
+
+title XXL-JOB故障转移(FAILOVER)路由策略时序图
+
+participant "调度中心\n(Admin)" as Admin
+participant "执行路由组件\n(ExecutorRouter)" as Router
+participant "故障转移路由器\n(ExecutorRouteFailover)" as Failover
+participant "执行器1\n(Executor1)" as Exec1 #pink
+participant "执行器2\n(Executor2)" as Exec2
+participant "执行器3\n(Executor3)" as Exec3
+database "数据库" as DB
+
+autonumber
+
+== 任务触发阶段 ==
+Admin -> Admin: 定时触发或手动触发任务
+Admin -> DB: 查询任务配置信息
+DB --> Admin: 返回任务配置(包含路由策略=FAILOVER)
+Admin -> Admin: 确定目标执行器组
+
+== 执行器路由选择阶段 ==
+Admin -> Router: 路由策略匹配\n(ExecutorRouteStrategyEnum.match)
+Router --> Admin: 返回故障转移路由器实例
+Admin -> DB: 查询执行器组的可用地址列表
+DB --> Admin: 返回地址列表[Executor1, Executor2, Executor3]
+
+== 故障转移路由执行阶段 ==
+Admin -> Failover: route(triggerParam, addressList)
+activate Failover
+
+note right of Failover
+  故障转移策略核心逻辑:
+  逐一检测执行器的可用性(beat)
+  选择第一个响应成功的执行器
+end note
+
+Failover -> Exec1: beat()请求(健康检测)
+note left of Exec1: 执行器1当前故障
+
+Exec1 --> Failover: 连接超时或异常
+Failover -> Failover: 记录失败信息
+
+Failover -> Exec2: beat()请求(健康检测)
+Exec2 --> Failover: 返回成功(ReturnT.SUCCESS_CODE)
+
+Failover -> Failover: 发现可用执行器，停止检测
+Failover --> Admin: 返回选中的执行器地址(Executor2)
+deactivate Failover
+
+== 任务执行阶段 ==
+Admin -> Exec2: 发送任务执行请求
+Exec2 -> Exec2: 执行任务
+Exec2 --> Admin: 返回执行结果
+
+== 任务结果处理 ==
+Admin -> DB: 保存任务执行结果和执行器信息
+DB --> Admin: 保存成功
+
+note over Admin, Exec3
+  故障转移路由特点:
+  1. 快速识别并规避故障节点
+  2. 优先保证任务成功执行
+  3. 适合对高可用性要求较高的场景
+end note
+
+@enduml 

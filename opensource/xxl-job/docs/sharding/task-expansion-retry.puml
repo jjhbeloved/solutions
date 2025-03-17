@@ -1,0 +1,148 @@
+@startuml 任务执行过程中扩容与重试的分片处理
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+skinparam sequenceMessageAlign center
+
+title XXL-JOB 任务扩容与重试分片处理机制
+
+actor "用户" as User
+participant "调度中心\n(Admin)" as Admin
+participant "任务触发器\n(XxlJobTrigger)" as Trigger
+participant "失败监控线程\n(JobFailMonitorHelper)" as FailMonitor
+collections "执行器集群\n(初始5个)" as Executors5
+collections "执行器集群\n(扩容至10个)" as Executors10
+database "数据库" as DB
+
+== 初始任务调度阶段(5个执行器) ==
+
+User -> Admin: 触发分片任务
+activate Admin
+
+Admin -> DB: 查询任务配置和执行器列表
+activate DB
+DB --> Admin: 返回数据(当前有5个执行器)
+deactivate DB
+
+Admin -> Trigger: 触发任务执行
+activate Trigger
+
+Trigger -> Trigger: 检测路由策略为分片广播\n计算分片参数(shardTotal=5)
+Trigger -> DB: 保存任务日志与分片参数
+activate DB
+DB --> Trigger: 返回日志ID
+deactivate DB
+
+loop 对每个执行器 (i=0 to 4)
+  Trigger -> DB: 记录分片参数 i/5 到xxl_job_log表
+  activate DB
+  DB --> Trigger: 保存成功
+  deactivate DB
+  
+  Trigger -> Executors5: 发送任务请求(分片参数:i/5)
+  activate Executors5
+end
+
+note right of Executors5
+  分片0/5分配给执行器1
+  分片1/5分配给执行器2
+  分片2/5分配给执行器3
+  分片3/5分配给执行器4
+  分片4/5分配给执行器5
+end note
+
+deactivate Trigger
+
+== 执行过程中扩容阶段 ==
+
+User -> Executors10: 扩容执行器(从5个到10个)
+Executors5 -> Admin: 新执行器注册
+Admin -> DB: 更新执行器地址列表
+note right of Executors10 
+  执行器数量变为10个，
+  但不影响正在执行的任务
+end note
+
+Executors5 -> Admin: 执行器3报告任务失败
+activate Admin
+Admin -> DB: 更新任务状态为失败
+activate DB
+DB --> Admin: 更新成功
+deactivate DB
+deactivate Admin
+
+== 任务失败重试阶段 ==
+
+FailMonitor -> DB: 扫描失败任务
+activate FailMonitor
+activate DB
+DB --> FailMonitor: 返回失败任务(分片2/5)
+deactivate DB
+
+FailMonitor -> DB: 获取原始任务执行日志
+activate DB
+DB --> FailMonitor: 返回日志(包含原始分片参数2/5)
+deactivate DB
+
+FailMonitor -> Trigger: 触发重试任务\n(传入原始分片参数2/5)
+activate Trigger
+
+Trigger -> Trigger: 检测到指定了分片参数\n不重新计算分片
+Trigger -> DB: 记录重试任务日志(分片参数:2/5)
+activate DB
+DB --> Trigger: 保存成功
+deactivate DB
+
+note right of Trigger
+  重要: 重试任务使用原始分片参数2/5
+  而不是根据当前10个执行器重新计算
+end note
+
+Trigger -> Executors10: 发送重试任务请求(分片参数:2/5)
+deactivate Trigger
+deactivate FailMonitor
+
+Executors10 -> Executors10: 执行重试任务\n处理符合条件的数据(id % 5 == 2)
+Executors10 -> Admin: 报告任务执行结果
+
+== 新任务触发阶段(执行器已扩容) ==
+
+User -> Admin: 触发下一次分片任务
+activate Admin
+
+Admin -> DB: 查询当前执行器列表
+activate DB
+DB --> Admin: 返回数据(当前有10个执行器)
+deactivate DB
+
+Admin -> Trigger: 触发任务执行
+activate Trigger
+
+Trigger -> Trigger: 检测路由策略为分片广播\n计算新的分片参数(shardTotal=10)
+Trigger -> DB: 保存任务日志与新分片参数
+activate DB
+DB --> Trigger: 返回日志ID
+deactivate DB
+
+loop 对每个执行器 (i=0 to 9)
+  Trigger -> DB: 记录分片参数 i/10 到xxl_job_log表
+  activate DB
+  DB --> Trigger: 保存成功
+  deactivate DB
+  
+  Trigger -> Executors10: 发送任务请求(分片参数:i/10)
+  activate Executors10
+end
+
+note right of Executors10
+  使用新的分片参数：
+  分片0/10到9/10分配给10个执行器
+  每个执行器的负载相比之前减少了
+end note
+
+deactivate Trigger
+deactivate Admin
+deactivate Executors10
+
+@enduml 

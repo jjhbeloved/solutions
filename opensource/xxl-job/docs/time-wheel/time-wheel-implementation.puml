@@ -1,0 +1,172 @@
+@startuml XXL-JOB时间轮实现机制
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+skinparam roundcorner 10
+skinparam noteBorderColor #888888
+skinparam noteBorderThickness 1
+skinparam noteBackgroundColor #EFEFEF
+skinparam classFontSize 14
+skinparam classAttributeFontSize 12
+skinparam sequenceMessageAlign center
+skinparam packageStyle rectangle
+
+' 定义类图
+package "XXL-JOB时间轮核心组件" {
+  class JobScheduleHelper {
+    - scheduleThread: Thread
+    - ringThread: Thread
+    - scheduleThreadToStop: boolean
+    - ringThreadToStop: boolean
+    - ringData: Map<Integer, List<Integer>>
+    + PRE_READ_MS: long = 5000
+    + start(): void
+    + toStop(): void
+    - refreshNextValidTime(jobInfo, fromTime): void
+    - pushTimeRing(ringSecond, jobId): void
+    + generateNextValidTime(jobInfo, fromTime): Date
+  }
+  
+  class "scheduleThread" as ScheduleThread << (T,orchid) Thread >> {
+    - 预读取任务线程
+    - 扫描即将需要执行的任务
+    - 将任务放入时间轮
+  }
+  
+  class "ringThread" as RingThread << (T,orchid) Thread >> {
+    - 时间轮执行线程
+    - 每秒检查当前秒对应的任务
+    - 触发执行任务
+  }
+  
+  class "ringData" as RingData << (M,lightgreen) Map >> {
+    - 时间轮数据结构
+    - key: 秒(0-59)
+    - value: 任务ID列表
+  }
+  
+  class JobTriggerPoolHelper {
+    - fastTriggerPool: ThreadPoolExecutor
+    - slowTriggerPool: ThreadPoolExecutor
+    + trigger(jobId, triggerType, ...): void
+  }
+  
+  class XxlJobInfo {
+    - id: int
+    - triggerNextTime: long
+    - triggerLastTime: long
+    - triggerStatus: int
+    - scheduleType: String
+    - scheduleConf: String
+  }
+}
+
+' 关系
+JobScheduleHelper --> ScheduleThread : 创建并启动
+JobScheduleHelper --> RingThread : 创建并启动
+JobScheduleHelper --> RingData : 管理
+ScheduleThread ..> RingData : 写入任务
+RingThread ..> RingData : 读取任务
+JobScheduleHelper ..> JobTriggerPoolHelper : 调用触发任务
+ScheduleThread ..> XxlJobInfo : 读取任务信息
+RingThread ..> JobTriggerPoolHelper : 触发任务执行
+
+' 时间轮结构图
+package "时间轮数据结构" {
+  class "时间轮(ringData)" as TimeWheel {
+    + 0秒槽: List<JobId>
+    + 1秒槽: List<JobId>
+    + 2秒槽: List<JobId>
+    + ...
+    + 59秒槽: List<JobId>
+  }
+  
+  note right of TimeWheel
+    时间轮是一个Map<Integer, List<Integer>>结构
+    - key: 秒数(0-59)
+    - value: 该秒需要触发的任务ID列表
+  end note
+}
+
+' 时间轮工作流程
+package "时间轮工作流程" {
+  class "预读取流程" as PreReadFlow {
+    1. 从数据库读取5秒内需要执行的任务
+    2. 计算任务下次触发时间的秒数
+    3. 将任务ID放入对应的时间轮槽中
+    4. 更新任务的下次触发时间
+  }
+  
+  class "执行流程" as ExecuteFlow {
+    1. 每秒检查当前秒对应的时间轮槽
+    2. 取出当前秒和前一秒的任务(避免处理延迟)
+    3. 将任务提交到触发线程池执行
+    4. 清空已处理的任务列表
+  }
+}
+
+' 时序图
+package "时间轮运行时序" {
+  class "启动阶段" as StartupPhase {
+    1. 创建并启动scheduleThread
+    2. 创建并启动ringThread
+  }
+  
+  class "运行阶段" as RunningPhase {
+    1. scheduleThread定期扫描即将到期的任务
+    2. 计算任务触发时间对应的秒数
+    3. 将任务放入时间轮对应槽位
+    4. ringThread每秒检查当前秒对应的槽位
+    5. 触发执行对应槽位中的所有任务
+  }
+  
+  class "停止阶段" as ShutdownPhase {
+    1. 设置scheduleThreadToStop=true
+    2. 等待scheduleThread终止
+    3. 等待时间轮中的任务处理完成
+    4. 设置ringThreadToStop=true
+    5. 等待ringThread终止
+  }
+}
+
+' 特殊情况处理
+package "特殊情况处理" {
+  class "任务错过(Misfire)" as MisfireHandling {
+    1. 检测到任务的触发时间已过期超过5秒
+    2. 根据misfire策略决定是否立即触发一次
+    3. 重新计算下次触发时间
+  }
+  
+  class "任务即将到期" as ImmediateExecution {
+    1. 检测到任务触发时间在5秒内
+    2. 立即触发一次任务执行
+    3. 计算下次触发时间
+    4. 如果下次触发时间仍在5秒内，放入时间轮
+  }
+  
+  class "预读取任务" as PreReadTask {
+    1. 检测到任务触发时间在5秒后
+    2. 计算触发时间对应的秒数
+    3. 将任务ID放入时间轮对应槽位
+    4. 计算下次触发时间
+  }
+}
+
+' 图例
+legend
+  XXL-JOB时间轮实现机制:
+  
+  1. 时间轮是一个环形数据结构，包含60个槽位(0-59秒)
+  2. scheduleThread负责预读取任务并放入时间轮
+  3. ringThread负责每秒检查时间轮并触发任务
+  4. 通过这种机制，实现了高效的任务调度，避免频繁扫描数据库
+  
+  时间轮优势:
+  - 时间复杂度O(1)的任务触发
+  - 减少数据库压力
+  - 精确的秒级调度
+  - 处理任务错过(Misfire)情况
+endlegend
+
+@enduml 

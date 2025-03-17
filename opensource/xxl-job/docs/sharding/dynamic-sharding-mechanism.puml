@@ -1,0 +1,157 @@
+@startuml XXL-JOB动态分片机制
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+
+title XXL-JOB动态分片机制
+
+' 定义参与者
+actor "用户" as User
+participant "调度中心\n(Admin)" as Admin
+participant "执行器注册线程\n(JobRegistryHelper)" as Registry
+participant "任务触发器\n(XxlJobTrigger)" as Trigger
+collections "执行器集群" as Executors
+database "数据库" as DB
+
+note over Admin, Executors
+  初始状态: 2个执行器正常运行 [Executor1, Executor2]
+  分片参数: Executor1(0/2), Executor2(1/2)
+end note
+
+' 定义执行器上线过程
+== 执行器扩容过程 ==
+
+User -> Executors: 1. 部署新的执行器(Executor3)
+activate Executors
+
+Executors -> Admin: 2. 注册请求(appname, address)
+activate Admin
+
+Admin -> Registry: 3. 处理注册请求
+activate Registry
+
+Registry -> DB: 4. 保存注册信息\n(xxl_job_registry表)
+activate DB
+DB --> Registry: 返回成功
+deactivate DB
+
+Registry -> DB: 5. 更新执行器组地址列表\n(xxl_job_group表)
+activate DB
+DB --> Registry: 返回成功
+deactivate DB
+
+Registry --> Admin: 6. 注册成功
+deactivate Registry
+
+Admin --> Executors: 7. 返回注册结果
+deactivate Admin
+deactivate Executors
+
+' 执行器扩容后的任务调度
+User -> Admin: 8. 触发分片任务
+activate Admin
+
+Admin -> DB: 9. 查询最新执行器列表
+activate DB
+DB --> Admin: 10. 返回[Executor1, Executor2, Executor3]
+deactivate DB
+
+Admin -> Trigger: 11. 触发任务执行
+activate Trigger
+
+Trigger -> Trigger: 12. 检测分片策略\n(SHARDING_BROADCAST)
+Trigger -> Trigger: 13. 计算新的分片总数(3)
+
+Trigger -> Executors: 14. 发送任务请求\n分片参数: 0/3, 1/3, 2/3
+activate Executors
+Executors -> Executors: 15. 按新分片参数处理数据
+Executors --> Trigger: 16. 返回执行结果
+deactivate Executors
+
+Trigger --> Admin: 17. 任务执行完成
+deactivate Trigger
+deactivate Admin
+
+note over Admin, Executors
+  扩容后: 3个执行器正常运行 [Executor1, Executor2, Executor3]
+  新分片参数: Executor1(0/3), Executor2(1/3), Executor3(2/3)
+  每个执行器处理的数据量减少，整体性能提升
+end note
+
+' 定义执行器下线过程
+== 执行器缩容过程 ==
+
+User -> Executors: 18. 下线执行器(Executor2)
+activate Executors
+
+Executors -> Admin: 19. 发送注销请求(可选)
+note right: 也可能直接宕机无注销
+activate Admin
+Admin -> Registry: 20. 处理注销请求
+activate Registry
+Registry -> DB: 21. 删除注册信息
+DB --> Registry: 返回成功
+Registry --> Admin: 注销成功
+deactivate Registry
+Admin --> Executors: 返回注销结果
+deactivate Admin
+deactivate Executors
+
+' 心跳超时
+note over Admin, DB
+  如果执行器异常宕机未注销，
+  心跳超时后自动从注册表移除
+end note
+
+Registry -> DB: 22. 定期检查注册表\n(检测心跳超时)
+activate Registry
+activate DB
+DB --> Registry: 23. 返回超时记录
+Registry -> DB: 24. 删除超时记录
+DB --> Registry: 25. 删除成功
+deactivate DB
+
+Registry -> DB: 26. 更新执行器组地址列表
+activate DB
+DB --> Registry: 27. 更新成功
+deactivate DB
+deactivate Registry
+
+' 执行器缩容后的任务调度
+User -> Admin: 28. 再次触发分片任务
+activate Admin
+
+Admin -> DB: 29. 查询最新执行器列表
+activate DB
+DB --> Admin: 30. 返回[Executor1, Executor3]
+deactivate DB
+
+Admin -> Trigger: 31. 触发任务执行
+activate Trigger
+
+Trigger -> Trigger: 32. 检测分片策略\n(SHARDING_BROADCAST)
+Trigger -> Trigger: 33. 计算新的分片总数(2)
+
+Trigger -> Executors: 34. 发送任务请求\n分片参数: 0/2, 1/2
+activate Executors
+Executors -> Executors: 35. 按新分片参数处理数据
+Executors --> Trigger: 36. 返回执行结果
+deactivate Executors
+
+Trigger --> Admin: 37. 任务执行完成
+deactivate Trigger
+deactivate Admin
+
+note over Admin, Executors
+  缩容后: 2个执行器运行 [Executor1, Executor3]
+  新分片参数: Executor1(0/2), Executor3(1/2)
+  
+  关键点:
+  1. 分片总数等于当前在线执行器数量
+  2. 每次任务触发都重新计算分片参数
+  3. 执行器上下线无需手动调整配置
+  4. 数据处理逻辑需考虑分片变化情况
+end note
+
+@enduml 

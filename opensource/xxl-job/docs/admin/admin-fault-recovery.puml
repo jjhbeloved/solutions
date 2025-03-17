@@ -1,0 +1,294 @@
+@startuml XXL-JOB调度中心故障发现与恢复机制
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+skinparam sequenceMessageAlign center
+skinparam roundcorner 10
+skinparam noteBorderColor #888888
+skinparam noteBorderThickness 1
+skinparam noteBackgroundColor #EFEFEF
+
+' 定义参与者
+actor "客户端/用户" as Client
+participant "负载均衡器\n(Nginx/LVS)" as LB
+box "调度中心集群" #LightBlue
+participant "调度中心1\n(Admin1)" as Admin1
+participant "调度中心2\n(Admin2)" as Admin2
+participant "调度中心3\n(Admin3)" as Admin3
+database "共享数据库\n(Database)" as DB
+end box
+participant "执行器集群" as Executors
+
+' 标题
+title XXL-JOB调度中心故障发现与恢复机制
+
+== 1. 正常状态下的系统运行 ==
+
+' 正常访问调度中心
+Client -> LB: 访问调度中心界面/API
+LB -> Admin1: 转发请求
+activate Admin1
+Admin1 -> DB: 查询任务/执行器信息
+activate DB
+DB --> Admin1: 返回数据
+deactivate DB
+Admin1 --> LB: 返回结果
+LB --> Client: 返回页面/API响应
+deactivate Admin1
+
+' 执行器向所有调度中心注册
+Executors -> Admin1: 执行器注册请求
+activate Admin1
+Admin1 -> DB: 保存注册信息
+activate DB
+DB --> Admin1: 保存成功
+deactivate DB
+Admin1 --> Executors: 返回成功
+deactivate Admin1
+
+Executors -> Admin2: 执行器注册请求(同一个请求发送到所有调度中心)
+activate Admin2
+Admin2 -> DB: 保存注册信息
+activate DB
+DB --> Admin2: 保存成功
+deactivate DB
+Admin2 --> Executors: 返回成功
+deactivate Admin2
+
+Executors -> Admin3: 执行器注册请求
+activate Admin3
+Admin3 -> DB: 保存注册信息
+activate DB
+DB --> Admin3: 保存成功
+deactivate DB
+Admin3 --> Executors: 返回成功
+deactivate Admin3
+
+note over Executors, Admin3
+  执行器配置多个调度中心地址(逗号分隔)
+  同时向所有调度中心发送注册请求
+  即便部分调度中心宕机，仍能维持注册状态
+end note
+
+' 任务调度
+Admin1 -> Admin1: JobScheduleHelper线程扫描待执行任务
+activate Admin1
+Admin1 -> DB: 获取分布式锁
+activate DB
+DB --> Admin1: 获取锁成功
+deactivate DB
+
+Admin1 -> DB: 查询需要触发的任务
+activate DB
+DB --> Admin1: 返回任务列表
+deactivate DB
+
+Admin1 -> Executors: 调度任务到执行器
+Executors --> Admin1: 任务接收确认
+Admin1 -> DB: 更新任务状态
+activate DB
+DB --> Admin1: 更新成功
+deactivate DB
+
+Admin1 -> DB: 释放锁
+activate DB
+DB --> Admin1: 释放成功
+deactivate DB
+deactivate Admin1
+
+note over Admin1, DB
+  任务调度通过数据库分布式锁确保
+  同一时间只有一个调度中心节点调度同一个任务
+end note
+
+== 2. 调度中心节点故障场景 ==
+
+' 调度中心故障
+Admin1 -[#red]-> Admin1 !! : 节点宕机
+note right of Admin1: 调度中心1异常宕机\n无法响应请求
+
+' 负载均衡器检测到故障
+LB -> Admin1: 健康检查请求
+activate LB #salmon
+LB -> LB: 检测到Admin1无响应
+LB -> LB: 将Admin1标记为不可用
+deactivate LB
+
+note over LB
+  负载均衡器通过健康检查
+  自动检测到Admin1不可用
+end note
+
+' 客户端请求重新路由
+Client -> LB: 访问调度中心界面/API
+LB -> Admin2: 重新路由到可用节点
+activate Admin2
+Admin2 -> DB: 查询任务/执行器信息
+activate DB
+DB --> Admin2: 返回数据
+deactivate DB
+Admin2 --> LB: 返回结果
+LB --> Client: 返回页面/API响应
+deactivate Admin2
+
+note over Client, Admin2
+  客户端无感知切换，服务持续可用
+  所有调度中心节点共享数据库，状态一致
+end note
+
+' 执行器注册到剩余调度中心
+Executors -> Admin1: 执行器注册请求
+note left: 请求失败，超时重试
+Executors -> Admin2: 执行器注册请求
+activate Admin2
+Admin2 -> DB: 保存注册信息
+activate DB
+DB --> Admin2: 保存成功
+deactivate DB
+Admin2 --> Executors: 返回成功
+deactivate Admin2
+
+Executors -> Admin3: 执行器注册请求
+activate Admin3
+Admin3 -> DB: 保存注册信息
+activate DB
+DB --> Admin3: 保存成功
+deactivate DB
+Admin3 --> Executors: 返回成功
+deactivate Admin3
+
+note over Executors, Admin3
+  即使Admin1宕机，执行器仍然可以
+  注册到其他可用的调度中心节点
+end note
+
+' 任务调度转移
+Admin2 -> Admin2: JobScheduleHelper线程扫描待执行任务
+activate Admin2
+Admin2 -> DB: 尝试获取分布式锁
+activate DB
+DB --> Admin2: 获取锁成功(原本可能由Admin1获取)
+deactivate DB
+
+Admin2 -> DB: 查询需要触发的任务
+activate DB
+DB --> Admin2: 返回任务列表
+deactivate DB
+
+Admin2 -> Executors: 调度任务到执行器
+Executors --> Admin2: 任务接收确认
+Admin2 -> DB: 更新任务状态
+activate DB
+DB --> Admin2: 更新成功
+deactivate DB
+
+Admin2 -> DB: 释放锁
+activate DB
+DB --> Admin2: 释放成功
+deactivate DB
+deactivate Admin2
+
+note over Admin2, DB
+  由于分布式锁机制，当Admin1宕机后
+  Admin2自动接管任务调度工作
+  无需人工干预，实现任务调度高可用
+end note
+
+== 3. 调度中心节点恢复 ==
+
+' 调度中心恢复
+Admin1 -> Admin1: 节点重启
+note left of Admin1: 通过k8s、systemd等\n监控并自动重启服务
+
+Admin1 -> Admin1: 初始化调度中心
+Admin1 -> Admin1: 启动各种线程(JobScheduleHelper等)
+
+' 负载均衡器检测到恢复
+LB -> Admin1: 健康检查请求
+activate LB #salmon
+Admin1 --> LB: 响应正常
+LB -> LB: 将Admin1重新标记为可用
+LB -> LB: 恢复Admin1到负载均衡池
+deactivate LB
+
+note over LB, Admin1
+  负载均衡器通过定期健康检查
+  检测到Admin1已恢复，重新加入集群
+end note
+
+' 执行器再次注册到所有调度中心
+Executors -> Admin1: 执行器注册请求(下一个心跳周期)
+activate Admin1
+Admin1 -> DB: 保存注册信息
+activate DB
+DB --> Admin1: 保存成功
+deactivate DB
+Admin1 --> Executors: 返回成功
+deactivate Admin1
+
+note over Executors, Admin1
+  执行器在下一个心跳周期
+  会自动向恢复的调度中心重新注册
+end note
+
+== 4. 系统运行恢复正常 ==
+
+' 客户端请求负载均衡
+Client -> LB: 访问调度中心界面/API
+LB -> Admin1: 可能转发到任何可用节点(包括恢复的Admin1)
+activate Admin1
+Admin1 -> DB: 查询任务/执行器信息
+activate DB
+DB --> Admin1: 返回数据
+deactivate DB
+Admin1 --> LB: 返回结果
+LB --> Client: 返回页面/API响应
+deactivate Admin1
+
+' 任务调度负载均衡
+Admin1 -> Admin1: JobScheduleHelper线程扫描待执行任务
+activate Admin1
+Admin1 -> DB: 尝试获取分布式锁
+activate DB
+note right: 不同任务可能被不同的\n调度中心节点获取锁并调度
+DB --> Admin1: 获取锁成功(任务1)
+deactivate DB
+
+Admin1 -> Executors: 调度任务到执行器
+Executors --> Admin1: 任务接收确认
+Admin1 -> DB: 更新任务状态
+Admin1 -> DB: 释放锁
+deactivate Admin1
+
+Admin2 -> Admin2: JobScheduleHelper线程扫描待执行任务
+activate Admin2
+Admin2 -> DB: 尝试获取分布式锁
+activate DB
+DB --> Admin2: 获取锁成功(任务2)
+deactivate DB
+
+Admin2 -> Executors: 调度不同的任务到执行器
+Executors --> Admin2: 任务接收确认
+Admin2 -> DB: 更新任务状态
+Admin2 -> DB: 释放锁
+deactivate Admin2
+
+note over Admin1, Admin2
+  所有调度中心节点恢复后
+  任务调度自然分散在各节点上
+  通过数据库锁避免任务重复调度
+end note
+
+legend
+  XXL-JOB调度中心故障恢复机制主要依靠:
+  1. 前置负载均衡器 - 自动检测节点健康状态，分发请求到可用节点
+  2. 共享数据库设计 - 所有调度中心节点共享同一个数据库，保持状态一致
+  3. 分布式锁机制 - 防止任务被重复调度，确保高可用性
+  4. 执行器多重注册 - 执行器同时向多个调度中心注册，提高容错性
+  
+  注意: XXL-JOB本身不负责调度中心进程的重启，
+  这通常由服务器自动重启、容器编排系统(如k8s)等外部机制实现
+endlegend
+
+@enduml 

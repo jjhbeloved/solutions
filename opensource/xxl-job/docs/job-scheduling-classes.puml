@@ -1,0 +1,187 @@
+@startuml 任务调度系统类图
+
+' 定义样式
+skinparam class {
+  BackgroundColor LightBlue
+  ArrowColor DeepSkyBlue
+  BorderColor Navy
+}
+
+skinparam package {
+  BackgroundColor AliceBlue
+  BorderColor CornflowerBlue
+}
+
+skinparam note {
+  BackgroundColor LightYellow
+  BorderColor Gold
+}
+
+package "任务定义与存储" {
+  class XxlJobInfo {
+    - id: int
+    - jobGroup: int
+    - jobDesc: String
+    - scheduleType: String
+    - scheduleConf: String
+    - jobCron: String
+    - executorHandler: String
+    - executorParam: String
+    - executorRouteStrategy: String
+    - executorBlockStrategy: String
+    - triggerStatus: int
+    - triggerLastTime: long
+    - triggerNextTime: long
+    ...
+  }
+  
+  class XxlJobInfoDao {
+    + scheduleJobQuery(): List<XxlJobInfo>
+    + findAllRunningJobInfo(): List<XxlJobInfo>
+    + findById(): XxlJobInfo
+    + update(): int
+    ...
+  }
+  
+  note "数据库表: xxl_job_info\n存储任务的定义信息" as NoteJobInfo
+}
+
+package "触发类型" {
+  enum TriggerTypeEnum {
+    MANUAL("手动触发")
+    CRON("Cron触发")
+    RETRY("失败重试")
+    PARENT("父任务触发")
+    API("API触发")
+    MISFIRE("过期补偿触发")
+    ...
+  }
+}
+
+package "调度核心" {
+  class JobScheduleHelper {
+    - {static} scheduleThreadToStop: boolean
+    - {static} LOCK_PREFIX: String
+    + start(): void
+    - initJobTriggerPoolHelper(): void
+    - refreshNextValidTime(): void
+    - pushTimeRing(): void
+    - jobTriggerPoolHelper.trigger(): void
+    ...
+  }
+  
+  class JobTriggerPoolHelper {
+    - {static} fastTriggerPool: ThreadPoolExecutor
+    - {static} slowTriggerPool: ThreadPoolExecutor
+    + trigger(jobId, triggerType, failRetryCount): void
+    - processTrigger(): void
+    ...
+  }
+  
+  class JobCompleteHelper {
+    - handleCallback(): void
+    - checkTimeoutJobs(): void
+    ...
+  }
+  
+  note "定时扫描待执行的任务\n基于时间轮实现\n获取数据库锁避免重复调度" as NoteSchedule
+  
+  JobScheduleHelper .. NoteSchedule
+}
+
+package "手动触发接口" {
+  class JobInfoController {
+    + triggerJob(): Result
+    ...
+  }
+  
+  class JobTriggerController {
+    + trigger(): ReturnT<String>
+    ...
+  }
+  
+  note "Web界面和REST API\n提供手动触发任务的入口" as NoteManualTrigger
+  
+  JobInfoController .. NoteManualTrigger
+  JobTriggerController .. NoteManualTrigger
+}
+
+package "执行器通信" {
+  interface ExecutorBiz {
+    + run(): ReturnT<String>
+    + kill(): ReturnT<String>
+    + log(): ReturnT<LogResult>
+    ...
+  }
+  
+  class ExecutorBizImpl {
+    + run(): ReturnT<String>
+    + kill(): ReturnT<String>
+    + log(): ReturnT<LogResult>
+    ...
+  }
+}
+
+package "路由策略" {
+  enum ExecutorRouteStrategyEnum {
+    FIRST("第一个")
+    LAST("最后一个")
+    ROUND("轮询")
+    RANDOM("随机")
+    CONSISTENT_HASH("一致性哈希")
+    LEAST_FREQUENTLY_USED("最不经常使用")
+    LEAST_RECENTLY_USED("最近最少使用")
+    FAILOVER("故障转移")
+    BUSYOVER("忙碌转移")
+    SHARDING_BROADCAST("分片广播")
+    ...
+  }
+  
+  interface ExecutorRouter {
+    + route(triggerParam, addressList): ReturnT<String>
+  }
+  
+  class ExecutorRouteRound {
+    + route(): ReturnT<String>
+  }
+  
+  class ExecutorRouteRandom {
+    + route(): ReturnT<String>
+  }
+  
+  class ExecutorRouteFailover {
+    + route(): ReturnT<String>
+  }
+  
+  ' 其他路由策略实现类
+  note "根据不同策略\n从注册的执行器中\n选择合适的执行器" as NoteRouter
+}
+
+' 系统调度流程
+JobScheduleHelper ..> XxlJobInfoDao : 查询待调度任务
+JobScheduleHelper ..> JobTriggerPoolHelper : 触发任务执行
+JobTriggerPoolHelper --> TriggerTypeEnum : 使用触发类型
+JobTriggerPoolHelper ..> ExecutorRouteStrategyEnum : 获取路由策略
+JobTriggerPoolHelper ..> ExecutorBiz : 调度任务到执行器
+
+' 手动触发流程
+JobInfoController ..> JobTriggerPoolHelper : 触发任务
+JobTriggerController ..> JobTriggerPoolHelper : 触发任务
+
+' 数据存储关系
+XxlJobInfoDao ..> XxlJobInfo : 操作
+
+' 路由策略关系
+ExecutorRouteStrategyEnum ..> ExecutorRouter : 获取具体策略
+ExecutorRouter <|.. ExecutorRouteRound
+ExecutorRouter <|.. ExecutorRouteRandom
+ExecutorRouter <|.. ExecutorRouteFailover
+
+' 执行器通信关系
+ExecutorBiz <|.. ExecutorBizImpl
+
+note "系统调度流程:\n1. JobScheduleHelper定时扫描数据库中触发时间到达的任务\n2. 获取分布式锁以防止重复调度\n3. 调用JobTriggerPoolHelper触发任务\n4. 根据路由策略选择执行器\n5. 通过ExecutorBiz将任务发送到执行器" as NoteSystemFlow
+
+note "手动触发流程:\n1. 通过Web界面或REST API发起请求\n2. JobInfoController/JobTriggerController接收请求\n3. 调用JobTriggerPoolHelper.trigger()方法\n4. 触发类型为MANUAL/API\n5. 后续流程与系统调度相同" as NoteManualFlow
+
+@enduml

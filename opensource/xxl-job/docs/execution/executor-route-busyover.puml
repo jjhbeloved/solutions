@@ -1,0 +1,78 @@
+@startuml XXL-JOB忙碌转移(BUSYOVER)路由策略
+
+!theme plain
+skinparam handwritten false
+skinparam backgroundColor transparent
+skinparam sequenceMessageAlign center
+
+title XXL-JOB忙碌转移(BUSYOVER)路由策略时序图
+
+participant "调度中心\n(Admin)" as Admin
+participant "执行路由组件\n(ExecutorRouter)" as Router
+participant "忙碌转移路由器\n(ExecutorRouteBusyover)" as Busyover
+participant "执行器1\n(Executor1)" as Exec1 #orange
+participant "执行器2\n(Executor2)" as Exec2
+participant "执行器3\n(Executor3)" as Exec3
+database "数据库" as DB
+
+autonumber
+
+== 任务触发阶段 ==
+Admin -> Admin: 定时触发或手动触发任务
+Admin -> DB: 查询任务配置信息
+DB --> Admin: 返回任务配置(包含路由策略=BUSYOVER)
+Admin -> Admin: 确定目标执行器组
+
+== 执行器路由选择阶段 ==
+Admin -> Router: 路由策略匹配\n(ExecutorRouteStrategyEnum.match)
+Router --> Admin: 返回忙碌转移路由器实例
+Admin -> DB: 查询执行器组的可用地址列表
+DB --> Admin: 返回地址列表[Executor1, Executor2, Executor3]
+
+== 忙碌转移路由执行阶段 ==
+Admin -> Busyover: route(triggerParam, addressList)
+activate Busyover
+
+note right of Busyover
+  忙碌转移策略核心逻辑:
+  逐一检测执行器的忙碌状态(idleBeat)
+  选择第一个空闲的执行器
+end note
+
+Busyover -> Exec1: idleBeat(jobId)请求(忙碌检测)
+
+note left of Exec1
+  执行器1当前正在执行任务或
+  任务队列中有待执行的任务
+end note
+
+Exec1 -> Exec1: 检查JobThread状态\n(isRunningOrHasQueue)
+Exec1 --> Busyover: 返回失败(FAIL_CODE)\n"job thread is running or has trigger queue"
+Busyover -> Busyover: 记录忙碌信息
+
+Busyover -> Exec2: idleBeat(jobId)请求(忙碌检测)
+Exec2 -> Exec2: 检查JobThread状态\n(isRunningOrHasQueue)
+Exec2 --> Busyover: 返回成功(SUCCESS_CODE)
+
+Busyover -> Busyover: 发现空闲执行器，停止检测
+Busyover --> Admin: 返回选中的执行器地址(Executor2)
+deactivate Busyover
+
+== 任务执行阶段 ==
+Admin -> Exec2: 发送任务执行请求
+Exec2 -> Exec2: 执行任务
+Exec2 --> Admin: 返回执行结果
+
+== 任务结果处理 ==
+Admin -> DB: 保存任务执行结果和执行器信息
+DB --> Admin: 保存成功
+
+note over Admin, Exec3
+  忙碌转移路由特点:
+  1. 识别并规避负载较重的执行器节点
+  2. 优先选择空闲的执行器执行任务
+  3. 适合均衡负载和避免任务拥堵场景
+  4. 可与阻塞策略配合使用，提高系统整体吞吐量
+end note
+
+@enduml 

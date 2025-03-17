@@ -1,0 +1,76 @@
+@startuml XXL-JOB子任务触发
+
+' 设置样式
+skinparam backgroundColor white
+skinparam handwritten false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 12
+skinparam ArrowFontSize 11
+skinparam sequence {
+  ArrowColor #2c3e50
+  ActorBorderColor #2c3e50
+  LifeLineBorderColor #2c3e50
+  LifeLineBackgroundColor #A9DCDF
+  
+  ParticipantBorderColor #2c3e50
+  ParticipantBackgroundColor #ebf5ee
+  ParticipantFontColor #2c3e50
+  
+  ActorBackgroundColor #ebf5ee
+  ActorFontColor #2c3e50
+}
+
+' 定义参与者
+actor "用户" as User
+participant "调度中心\nAdmin" as Admin
+participant "JobTriggerPool\n触发器池" as TriggerPool
+participant "XxlJobTrigger\n触发器" as Trigger
+participant "执行器\nExecutor" as Executor
+participant "JobThread\n任务线程" as JobThread
+participant "XxlJobCompleter\n任务完成处理器" as Completer
+
+' ======= 子任务触发流程 =======
+title XXL-JOB子任务触发流程
+
+== 父任务触发与执行 ==
+User -> Admin : 触发任务
+activate Admin
+Admin -> TriggerPool : 添加任务到触发池
+activate TriggerPool
+TriggerPool -> Trigger : 触发任务
+activate Trigger
+Trigger -> Executor : 发送执行请求(jobId, params)
+activate Executor
+Executor -> JobThread : 创建/获取任务线程
+activate JobThread
+JobThread -> JobThread : 执行任务
+note right: 任务执行完成后\n返回执行结果
+JobThread --> Executor : 返回执行结果
+deactivate JobThread
+Executor --> Trigger : 返回执行结果
+deactivate Executor
+Trigger --> TriggerPool : 返回执行结果
+deactivate Trigger
+TriggerPool --> Admin : 返回执行结果
+deactivate TriggerPool
+Admin -> Completer : 完成任务处理
+activate Completer
+
+== 子任务触发 ==
+Completer -> Completer : 检查任务执行状态
+note right: 只有当父任务执行成功时\n才会触发子任务
+Completer -> Completer : 获取子任务列表(childJobId)
+note right: 解析childJobId字段获取\n子任务ID列表
+loop 对每个子任务ID
+    Completer -> TriggerPool : 触发子任务(JobTriggerPoolHelper.trigger)
+    activate TriggerPool
+    note right: 使用TriggerTypeEnum.PARENT\n作为触发类型
+    TriggerPool -> Trigger : 触发任务
+    Trigger -> Executor : 发送执行请求
+    Executor -> JobThread : 创建/获取任务线程
+    JobThread -> JobThread : 执行子任务
+end
+deactivate Completer
+deactivate Admin
+
+@enduml 

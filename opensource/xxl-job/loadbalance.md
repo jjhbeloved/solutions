@@ -1,6 +1,6 @@
 # XXL-JOB 负载均衡与高可用设计
 
-## 一、负载均衡机制概述
+## 1 负载均衡机制概述
 
 XXL-JOB在集群部署模式下通过多种机制实现负载均衡，根据任务触发方式的不同，分别采用不同的负载均衡策略。
 
@@ -10,7 +10,7 @@ XXL-JOB在集群部署模式下通过多种机制实现负载均衡，根据任�
 - **执行器(Executor)**: 负责任务执行
 - **注册中心功能**: 作为调度中心内嵌模块，管理执行器注册信息
 
-## 二、不同任务触发方式的负载均衡实现
+## 2 不同任务触发方式的负载均衡实现
 
 ### 2.1 定时任务负载均衡机制
 
@@ -55,7 +55,7 @@ XXL-JOB在集群部署模式下通过多种机制实现负载均衡，根据任�
 
 通过REST API触发的任务，由前置负载均衡器实现请求分发。
 
-#### 工作流程
+#### 2.2.1 工作流程
 
 ``` text
 ┌─────────────┐
@@ -82,13 +82,13 @@ XXL-JOB在集群部署模式下通过多种机制实现负载均衡，根据任�
       └─────────────┘
 ```
 
-#### 实现原理
+#### 2.2.2 实现原理
 
 1. 请求首先到达负载均衡器(如Nginx/LVS/HAProxy)
 2. 负载均衡器根据配置策略将请求分发到某个调度中心节点
 3. 接收请求的调度中心节点处理该任务的触发逻辑
 
-#### 负载均衡策略选项
+#### 2.2.3 负载均衡策略选项
 
 - 轮询(Round Robin)：请求依次分配到不同节点
 - 加权轮询(Weighted Round Robin)：根据节点权重分配
@@ -96,11 +96,11 @@ XXL-JOB在集群部署模式下通过多种机制实现负载均衡，根据任�
 - IP哈希(IP Hash)：相同IP的请求总是发送到同一节点
 - URI哈希(URI Hash)：相同URI的请求发送到同一节点
 
-## 三、高可用设计
+## 3 高可用设计
 
 ### 3.1 调度中心高可用
 
-#### 主要机制
+#### 3.1.1 主要机制
 
 1. **多节点部署**：调度中心支持多节点集群部署
 2. **共享数据库**：所有节点共享同一数据库，保证数据一致性
@@ -110,7 +110,7 @@ XXL-JOB在集群部署模式下通过多种机制实现负载均衡，根据任�
 
 ### 3.2 执行器高可用
 
-#### 主要机制
+#### 3.2.1 主要机制
 
 1. **集群部署**：执行器支持集群部署，多节点运行同一应用
 2. **多点注册**：执行器向所有调度中心节点注册，确保可见性
@@ -127,14 +127,14 @@ XXL-JOB在集群部署模式下通过多种机制实现负载均衡，根据任�
 
 ### 3.3 注册中心功能高可用
 
-#### 主要机制
+#### 3.3.1 主要机制
 
 1. **内嵌设计**：注册中心功能内嵌于调度中心，无需外部依赖
 2. **心跳机制**：执行器定期发送心跳，更新注册时间戳
 3. **过期清理**：自动清理超过90秒未更新的注册信息
 4. **全量注册**：执行器向所有调度中心注册，提高容错性
 
-## 四、进阶负载均衡与高可用方案
+## 4 进阶负载均衡与高可用方案
 
 除了XXL-JOB内置的机制外，还可以考虑以下进阶方案提升系统的负载均衡和高可用能力：
 
@@ -166,7 +166,175 @@ XXL-JOB在集群部署模式下通过多种机制实现负载均衡，根据任�
 3. **智能告警**：设置合理的告警阈值，避免误报和漏报
 4. **可视化面板**：提供直观的监控界面，快速定位问题
 
-## 五、最佳实践建议
+## 5. 阻塞处理策略
+
+提供了在高负载情况下的多种处理选择，满足不同场景的需求
+
+### 5.1 阻塞策略的定义
+
+阻塞处理策略用于处理当任务调度过于密集而执行器来不及处理时的情况。XXL-JOB提供了三种阻塞处理策略：
+
+```java
+public enum ExecutorBlockStrategyEnum {
+    SERIAL_EXECUTION("Serial execution"),        // 单机串行
+    DISCARD_LATER("Discard Later"),              // 丢弃后续调度
+    COVER_EARLY("Cover Early");                  // 覆盖之前调度
+    // ...
+}
+```
+
+### 5.2 阻塞策略的激活条件
+
+阻塞策略的激活条件是当同一个任务（相同的jobId）的**前一次执行还未完成时，又接收到了新的执行请求**。具体而言：
+
+#### 5.2.1 判断流程
+
+1. 每个任务在被触发执行时，执行器都会检查该JobId是否已经有对应的JobThread存在
+2. 如果存在JobThread，则进一步检查该线程是否正在执行任务或队列中有待执行的任务
+3. 只有当 `jobThread != null && jobThread.isRunningOrHasQueue()` 条件满足时，阻塞策略才会被激活
+
+```java
+// JobThread中判断任务是否在运行或队列中有待执行任务的方法
+public boolean isRunningOrHasQueue() {
+    return running || triggerQueue.size()>0;
+}
+```
+
+#### 5.2.2 是否每次触发都会判断
+
+是的，每个job被触发执行时都会参考阻塞策略，但只有当满足上述触发条件时，阻塞策略才会真正起作用。具体来说：
+
+- 如果是任务的首次执行，或者前一次执行已经完成，阻塞策略不会被激活
+- 只有在同一个任务的多次触发出现时间重叠时，阻塞策略才会发挥作用
+
+#### 5.2.3 阻塞策略的配置与传递
+
+阻塞策略是在任务配置时就已经定义好的，存储在`XxlJobInfo`的`executorBlockStrategy`字段中：
+
+```java
+public class XxlJobInfo {
+    // ...其他字段...
+    private String executorBlockStrategy;    // 阻塞处理策略
+    // ...
+}
+```
+
+在任务触发时，阻塞策略会作为参数传递给执行器：
+
+```java
+// 从jobInfo中获取阻塞策略
+ExecutorBlockStrategyEnum blockStrategy = ExecutorBlockStrategyEnum.match(jobInfo.getExecutorBlockStrategy(), ExecutorBlockStrategyEnum.SERIAL_EXECUTION);
+
+// 将阻塞策略放入触发参数中传递给执行器
+triggerParam.setExecutorBlockStrategy(jobInfo.getExecutorBlockStrategy());
+```
+
+#### 5.2.4 阻塞策略的意义
+
+阻塞策略主要解决以下场景的问题：
+
+1. **定时任务执行时间超过调度周期**：例如，一个每分钟执行一次的任务，但单次执行需要2分钟，这会导致任务积压
+2. **手动频繁触发同一任务**：例如，用户在短时间内多次手动触发同一任务
+3. **系统高负载状态下的任务调度**：当系统资源紧张时，任务执行变慢，可能导致任务积压
+
+通过配置适当的阻塞策略，可以根据不同的业务场景优化任务的执行行为。
+
+### 5.3 阻塞策略的实现
+
+阻塞策略的核心实现在`ExecutorBizImpl`类的`run`方法中，该方法在接收到任务触发请求时根据配置的阻塞策略决定如何处理：
+
+```java
+// executor block strategy
+if (jobThread != null) {
+    ExecutorBlockStrategyEnum blockStrategy = ExecutorBlockStrategyEnum.match(triggerParam.getExecutorBlockStrategy(), null);
+    if (ExecutorBlockStrategyEnum.DISCARD_LATER == blockStrategy) {
+        // discard when running
+        if (jobThread.isRunningOrHasQueue()) {
+            return new ReturnT<String>(ReturnT.FAIL_CODE, "block strategy effect："+ExecutorBlockStrategyEnum.DISCARD_LATER.getTitle());
+        }
+    } else if (ExecutorBlockStrategyEnum.COVER_EARLY == blockStrategy) {
+        // kill running jobThread
+        if (jobThread.isRunningOrHasQueue()) {
+            removeOldReason = "block strategy effect：" + ExecutorBlockStrategyEnum.COVER_EARLY.getTitle();
+            jobThread = null;
+        }
+    } else {
+        // just queue trigger (SERIAL_EXECUTION)
+    }
+}
+```
+
+### 5.34 三种阻塞策略的详细分析
+
+![阻塞处理策略](subtask-blockstrategy.puml)
+
+#### 5.4.1 单机串行 (SERIAL_EXECUTION)
+
+- **实现方式**：当存在正在执行或队列中的任务时，新的任务会被添加到执行队列末尾，等待前面的任务执行完毕
+- **应用场景**：任务必须按顺序执行，且不允许丢失任何一次调度
+- **代码流程**：
+  1. 检测到现有任务线程
+  2. 不做特殊处理，直接将任务添加到队列尾部
+  3. 任务线程按照FIFO顺序依次执行队列中的任务
+
+```java
+// 单机串行的情况下，不需要特殊处理，直接添加到执行队列
+// 代码中的 else 分支："just queue trigger"
+```
+
+#### 5.4.2 丢弃后续调度 (DISCARD_LATER)
+
+- **实现方式**：当存在正在执行或队列中的任务时，直接丢弃新的调度请求
+- **应用场景**：任务执行时间较长，频率较高，可以容忍丢弃部分调度的场景
+- **代码流程**：
+  1. 检测到现有任务线程正在运行或队列非空
+  2. 直接返回失败，不添加到执行队列
+  3. 在日志中记录丢弃原因
+
+```java
+if (ExecutorBlockStrategyEnum.DISCARD_LATER == blockStrategy) {
+    // discard when running
+    if (jobThread.isRunningOrHasQueue()) {
+        return new ReturnT<String>(ReturnT.FAIL_CODE, "block strategy effect："+ExecutorBlockStrategyEnum.DISCARD_LATER.getTitle());
+    }
+}
+```
+
+#### 5.4.3 覆盖之前调度 (COVER_EARLY)
+
+- **实现方式**：当存在正在执行或队列中的任务时，先终止当前任务线程，然后创建新的任务线程执行新任务
+- **应用场景**：只关心最新一次调度结果，之前的调度任务可以被覆盖的场景
+- **代码流程**：
+  1. 检测到现有任务线程正在运行或队列非空
+  2. 终止当前任务线程（设置`jobThread = null`）
+  3. 创建新的任务线程执行新任务
+
+```java
+else if (ExecutorBlockStrategyEnum.COVER_EARLY == blockStrategy) {
+    // kill running jobThread
+    if (jobThread.isRunningOrHasQueue()) {
+        removeOldReason = "block strategy effect：" + ExecutorBlockStrategyEnum.COVER_EARLY.getTitle();
+        jobThread = null;
+    }
+}
+```
+
+### 5.5 阻塞策略的选择建议
+
+- **单机串行**：适用于任务必须按顺序执行，且每次调度都不能丢失的场景，如数据同步、订单处理等
+- **丢弃后续调度**：适用于任务执行时间较长，频率较高，可以容忍丢弃部分调度的场景，如数据汇总、报表生成等
+- **覆盖之前调度**：适用于只关心最新一次调度结果的场景，如配置刷新、缓存更新等
+
+## 5.6 两种调度策略的配合使用
+
+子任务和阻塞处理策略可以配合使用，形成更复杂的任务调度逻辑：
+
+1. **子任务 + 单机串行**：确保任务链按照严格的顺序依次执行
+2. **子任务 + 丢弃后续调度**：在高负载情况下，只有当父任务能够执行时，才会触发子任务
+3. **子任务 + 覆盖之前调度**：始终执行最新的任务，并在其成功后触发子任务
+
+
+## 6 最佳实践建议
 
 1. **调度中心部署**：
    - 建议至少部署3个调度中心节点

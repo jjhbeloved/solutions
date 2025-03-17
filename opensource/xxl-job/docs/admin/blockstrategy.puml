@@ -1,0 +1,73 @@
+@startuml XXL-JOB阻塞处理策略
+
+' 设置样式
+skinparam backgroundColor white
+skinparam handwritten false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 12
+skinparam ArrowFontSize 11
+skinparam sequence {
+  ArrowColor #2c3e50
+  ActorBorderColor #2c3e50
+  LifeLineBorderColor #2c3e50
+  LifeLineBackgroundColor #A9DCDF
+  
+  ParticipantBorderColor #2c3e50
+  ParticipantBackgroundColor #ebf5ee
+  ParticipantFontColor #2c3e50
+  
+  ActorBackgroundColor #ebf5ee
+  ActorFontColor #2c3e50
+}
+
+' ======= 阻塞处理策略流程 =======
+
+title XXL-JOB 阻塞处理策略流程
+
+== 阻塞处理策略 ==
+User -> Admin : 高频触发同一任务
+activate Admin
+
+Admin -> TriggerPool : 添加任务到触发池(jobId)
+activate TriggerPool
+TriggerPool -> Trigger : 触发任务
+activate Trigger
+
+Trigger -> Executor : 发送执行请求
+activate Executor
+
+note right of Executor
+  执行器根据阻塞策略决定如何处理
+  1. 单机串行(SERIAL_EXECUTION)
+  2. 丢弃后续调度(DISCARD_LATER)
+  3. 覆盖之前调度(COVER_EARLY)
+end note
+
+== 单机串行(SERIAL_EXECUTION) ==
+Executor -> Executor : 检查JobThread状态
+note right: 默认策略，不做特殊处理
+Executor -> JobThread : 将任务添加到执行队列
+activate JobThread
+note right: triggerQueue.add(triggerParam)
+JobThread -> JobThread : 按FIFO顺序执行队列中任务
+
+== 丢弃后续调度(DISCARD_LATER) ==
+Executor -> Executor : 检查JobThread是否正在运行或队列非空
+note right: jobThread.isRunningOrHasQueue()
+Executor -> Admin : 返回拒绝执行(任务被丢弃)
+note right: 不将任务添加到执行队列\n直接返回失败状态码
+
+== 覆盖之前调度(COVER_EARLY) ==
+Executor -> Executor : 检查JobThread是否正在运行或队列非空
+note right: jobThread.isRunningOrHasQueue()
+Executor -> JobThread : 终止当前任务线程
+note right: jobThread = null
+Executor -> JobThread : 创建新的任务线程执行新任务
+
+deactivate JobThread
+deactivate Executor
+deactivate Trigger
+deactivate TriggerPool
+deactivate Admin
+
+@enduml 

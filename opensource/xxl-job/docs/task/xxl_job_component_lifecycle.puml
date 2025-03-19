@@ -1,0 +1,62 @@
+@startuml xxl_job_component_lifecycle
+
+' 自定义样式
+skinparam sequenceMessageAlign center
+skinparam sequence {
+  ArrowColor Black
+  LifeLineBackgroundColor White
+  LifeLineBorderColor Gray
+  ParticipantBackgroundColor White
+  ParticipantBorderColor Black
+}
+
+' 参与者
+participant "应用启动" as App
+participant "XxlJobExecutor" as Executor
+participant "JobThread" as JobThread
+participant "IJobHandler" as Handler
+participant "应用关闭" as AppStop
+
+' 生命周期流程
+== 初始化阶段 ==
+App -> Executor : 1. 应用启动
+activate Executor
+
+Executor -> Executor : 2. 初始化JobHandler注册表\nregistJobHandler()
+Executor -> Executor : 3. 启动内嵌服务器\nstart()
+Executor -> Executor : 4. 注册到调度中心
+
+== 任务调度阶段 ==
+[-> Executor : 5. 接收调度请求
+
+Executor -> JobThread : 6. 创建/获取JobThread\nregistJobThread()
+activate JobThread
+
+JobThread -> Handler : 7. 初始化处理器\ninit()
+activate Handler
+
+note over JobThread: JobThread启动后进入循环\n等待任务触发
+
+Executor -> JobThread : 8. 将触发参数加入队列\npushTriggerQueue()
+
+JobThread -> JobThread : 9. 从队列获取参数
+JobThread -> Handler : 10. 执行任务\nexecute()
+
+Handler --> JobThread : 11. 返回结果
+JobThread --> Executor : 12. 异步回调结果
+
+== 销毁阶段 ==
+AppStop -> Executor : 13. 应用关闭\ndestroy()
+
+Executor -> JobThread : 14. 停止所有线程\nremoveJobThread()
+JobThread -> Handler : 15. 销毁处理器\ndestroy()
+deactivate Handler
+
+JobThread --> Executor : 16. 线程终止
+deactivate JobThread
+
+Executor -> Executor : 17. 关闭内嵌服务器
+Executor -> Executor : 18. 注销调度中心注册
+deactivate Executor
+
+@enduml 

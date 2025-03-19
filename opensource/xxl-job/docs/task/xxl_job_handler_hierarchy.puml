@@ -1,0 +1,62 @@
+@startuml xxl_job_handler_hierarchy
+
+' 样式设置
+skinparam class {
+  BackgroundColor White
+  ArrowColor Black
+  BorderColor Black
+}
+
+abstract class IJobHandler {
+  + {abstract} execute(): void
+  + init(): void
+  + destroy(): void
+}
+
+class MethodJobHandler {
+  - target: Object
+  - method: Method
+  - initMethod: Method
+  - destroyMethod: Method
+  + execute(): void
+}
+
+class GlueJobHandler {
+  - jobHandler: IJobHandler
+  - glueUpdatetime: long
+  + execute(): void
+}
+
+class ScriptJobHandler {
+  - jobId: int
+  - glueUpdatetime: long
+  - gluesource: String
+  - glueType: GlueTypeEnum
+  + execute(): void
+}
+
+class ShardingJobHandler {
+  + execute(): void
+}
+
+class CommandJobHandler {
+  + execute(): void
+}
+
+class HttpJobHandler {
+  + execute(): void
+}
+
+class "其他JobHandler" as OtherJobHandler {
+  + execute(): void
+}
+
+IJobHandler <|-- MethodJobHandler
+IJobHandler <|-- GlueJobHandler
+IJobHandler <|-- ScriptJobHandler
+MethodJobHandler <|-- ShardingJobHandler
+MethodJobHandler <|-- CommandJobHandler
+MethodJobHandler <|-- HttpJobHandler
+MethodJobHandler <|-- OtherJobHandler
+
+@enduml 

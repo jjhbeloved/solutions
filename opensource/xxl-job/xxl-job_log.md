@@ -668,6 +668,7 @@ spec:
 
 4. **地址注册机制优化**：
    执行器注册时使用固定的DNS名称而非IP地址：
+
    ```java
    // 使用Pod名称+服务名注册
    String podName = System.getenv("POD_NAME"); // 由StatefulSet注入的环境变量
@@ -715,10 +716,12 @@ public class RemoteLogAppender {
 ```
 
 优点：
+
 - 日志集中管理
 - 不受Pod生命周期影响
 
 缺点：
+
 - 需要修改XXL-JOB源码
 - 增加系统复杂度
 
@@ -734,10 +737,12 @@ RegistryParam registryParam = new RegistryParam(RegistType.EXECUTOR.name(), appn
 ```
 
 优点：
+
 - 地址稳定，不受Pod重启影响
 - 实现简单
 
 缺点：
+
 - 日志仍存储在本地
 - 可能导致日志被分散到不同Pod
 
@@ -867,11 +872,13 @@ spec:
 ```
 
 **优点**：
+
 - 兼容XXL-JOB现有日志机制，无需修改源码
 - 日志持久保存，不受Pod生命周期影响
 - 管理界面可直接查看日志
 
 **缺点**：
+
 - 依赖特定存储解决方案（如NFS）
 - 多副本情况下需要ReadWriteMany支持
 - I/O性能可能受到网络存储的限制
@@ -910,6 +917,7 @@ spec:
 
 4. **地址注册机制优化**：
    执行器注册时使用固定的DNS名称而非IP地址：
+
    ```java
    // 使用Pod名称+服务名注册
    String podName = System.getenv("POD_NAME"); // 由StatefulSet注入的环境变量
@@ -917,10 +925,12 @@ spec:
    ```
 
 以上机制共同确保了两点：
+
 - **存储持久性**：日志数据不会随Pod重启而丢失
 - **地址稳定性**：调度中心可以通过固定DNS名称访问执行器，而不受IP变化影响
 
 **完整流程举例**：
+
 1. Pod A（如xxl-job-executor-0）执行任务并将日志写入挂载的PV
 2. Pod A重启或被重新调度
 3. 新的Pod A（保持相同名称）启动并挂载相同的PV
@@ -993,11 +1003,13 @@ xxl.job.executor.logpath=/logs/xxl-job/jobhandler
 ```
 
 **优点**：
+
 - 日志集中管理，便于跨节点查询
 - 支持更强大的日志分析和搜索能力
 - 不受Pod生命周期影响
 
 **缺点**：
+
 - 需要额外的日志基础设施
 - 可能需要修改XXL-JOB管理界面以支持外部日志查询
 - 增加系统复杂度
@@ -1051,11 +1063,13 @@ spec:
 ```
 
 **优点**：
+
 - 兼顾实时日志查询和长期日志存储
 - 降低存储成本
 - 保留XXL-JOB原生日志查看体验
 
 **缺点**：
+
 - 实现复杂度较高
 - 需要更多的配置和管理
 

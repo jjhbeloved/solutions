@@ -1,0 +1,34 @@
+@startuml xxl_job_script_mode_sequence
+
+' 参与者
+participant "调度中心" as AdminCenter
+participant "执行器" as Executor
+participant "JobThread" as JobThread
+participant "ScriptJobHandler" as ScriptHandler
+participant "脚本解释器" as ScriptInterpreter
+
+' 时序
+AdminCenter -> Executor: 1. 触发任务请求(携带脚本内容)
+Executor -> ScriptHandler: 2. 创建ScriptJobHandler
+Executor -> JobThread: 3. 将触发参数加入队列
+AdminCenter <-- Executor: 4. 响应(异步执行)
+
+JobThread -> JobThread: 5. 从队列获取参数
+JobThread -> ScriptHandler: 6. 调用execute()
+
+activate ScriptHandler
+ScriptHandler -> ScriptHandler: 7. 创建脚本文件
+ScriptHandler -> ScriptInterpreter: 8. 调用脚本解释器
+
+activate ScriptInterpreter
+ScriptInterpreter -> ScriptInterpreter: 9. 执行脚本
+deactivate ScriptInterpreter
+
+ScriptHandler <-- ScriptInterpreter: 返回退出码
+ScriptHandler -> ScriptHandler: 10. 处理执行结果
+deactivate ScriptHandler
+
+JobThread <-- ScriptHandler: 返回执行结果
+AdminCenter <-- Executor: 11. 异步回调结果
+
+@enduml 

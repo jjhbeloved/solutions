@@ -1,0 +1,64 @@
+@startuml xxl_job_data_flow_diagram
+
+' 样式设置
+skinparam {
+  BackgroundColor White
+  ArrowColor Black
+  BorderColor Black
+}
+
+rectangle "调度中心" as AdminCenter {
+  card "输出:" as AdminOutput {
+    file "任务ID"
+    file "执行参数"
+    file "执行器地址"
+    file "分片参数"
+    file "GLUE代码/脚本"
+  }
+}
+
+rectangle "执行器" as Executor {
+  card "输入:" as ExecutorInput {
+    file "任务ID"
+    file "执行参数"
+    file "阻塞策略"
+    file "超时时间"
+    file "GLUE代码/脚本"
+  }
+  
+  card "处理:" as ExecutorProcess {
+    file "任务接收"
+    file "参数解析"
+    file "线程选择"
+    file "异步响应"
+  }
+}
+
+rectangle "任务线程" as JobThread {
+  card "输入:" as ThreadInput {
+    file "触发参数"
+    file "阻塞策略"
+    file "超时时间"
+  }
+  
+  card "处理:" as ThreadProcess {
+    file "初始化上下文"
+    file "执行任务"
+    file "记录日志"
+    file "处理结果"
+  }
+  
+  card "输出:" as ThreadOutput {
+    file "执行状态"
+    file "执行结果"
+    file "执行日志"
+  }
+}
+
+' 数据流向
+AdminCenter -right-> Executor : 调度请求
+Executor -right-> JobThread : 任务执行
+JobThread -left-> Executor : 执行结果
+Executor -left-> AdminCenter : 回调通知
+
+@enduml 

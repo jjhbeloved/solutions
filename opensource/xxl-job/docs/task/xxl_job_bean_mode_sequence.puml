@@ -1,0 +1,29 @@
+@startuml xxl_job_bean_mode_sequence
+
+' 参与者
+participant "调度中心" as AdminCenter
+participant "执行器" as Executor
+participant "JobThread" as JobThread
+participant "MethodJobHandler" as MethodJobHandler
+participant "业务方法" as BusinessMethod
+
+' 时序
+AdminCenter -> Executor: 1. 触发任务请求
+Executor -> JobThread: 2. 查找/创建JobThread
+Executor -> JobThread: 3. 将触发参数加入队列
+AdminCenter <-- Executor: 4. 响应(异步执行)
+
+JobThread -> JobThread: 5. 从队列获取参数
+JobThread -> JobThread: 6. 初始化上下文
+JobThread -> MethodJobHandler: 7. 调用execute()
+MethodJobHandler -> BusinessMethod: 8. 反射调用业务方法
+
+activate BusinessMethod
+BusinessMethod -> BusinessMethod: 9. 执行业务逻辑
+deactivate BusinessMethod
+
+MethodJobHandler <-- BusinessMethod: 返回结果
+JobThread <-- MethodJobHandler: 返回结果
+AdminCenter <-- Executor: 10. 异步回调结果
+
+@enduml 

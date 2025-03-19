@@ -1,0 +1,45 @@
+@startuml xxl_job_executor_thread_relation
+
+' 样式设置
+skinparam class {
+  BackgroundColor White
+  ArrowColor Black
+  BorderColor Black
+}
+
+class XxlJobExecutor {
+  - jobHandlerRepository: ConcurrentMap<String, IJobHandler>
+  - jobThreadRepository: ConcurrentMap<Integer, JobThread>
+  + start(): void
+  + destroy(): void
+  + registJobHandler(name: String, handler: IJobHandler): void
+  + registJobThread(jobId: int, handler: IJobHandler): JobThread
+  + loadJobHandler(name: String): IJobHandler
+  + removeJobThread(jobId: int): JobThread
+}
+
+class JobThread {
+  - jobId: int
+  - handler: IJobHandler
+  - triggerQueue: LinkedBlockingQueue<TriggerParam>
+  - triggerLogIdSet: Set<Long>
+  + run(): void
+  + pushTriggerQueue(triggerParam: TriggerParam): ReturnT<String>
+  + toStop(stopReason: String): void
+  + isRunningOrHasQueue(): boolean
+}
+
+abstract class IJobHandler {
+  + {abstract} execute(): void
+  + init(): void
+  + destroy(): void
+}
+
+class "具体JobHandler实现" as ConcreteHandler {
+}
+
+XxlJobExecutor --> JobThread: 管理
+JobThread --> IJobHandler: 使用
+IJobHandler <|-- ConcreteHandler
+
+@enduml 

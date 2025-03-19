@@ -1,0 +1,62 @@
+@startuml xxl_job_component_diagram
+
+' 样式设置
+skinparam component {
+  BackgroundColor White
+  ArrowColor Black
+  BorderColor Black
+}
+
+package "调度中心 (XXL-JOB Admin)" {
+  [任务配置管理] as TaskManager
+  [执行器管理] as ExecutorManager
+  [调度线程池] as SchedulePool
+  [日志查询接口] as LogQuery
+}
+
+package "执行器 (XXL-JOB Executor)" {
+  [JobHandler注册管理中心] as HandlerRegistry
+  [内嵌HTTP服务器\n(EmbedServer)] as EmbedServer
+  [任务线程池\n(JobThread)] as ThreadPool
+  [日志文件管理\n(FileAppender)] as FileAppender
+}
+
+package "任务类型" {
+  package "BEAN/GLUE任务" {
+    [Java实现] as JavaImpl
+    [内部方法] as InternalMethod
+    [HTTP请求] as HttpRequest
+    [命令行] as CommandLine
+  }
+  
+  package "脚本类型任务" {
+    [Shell] as Shell
+    [Python] as Python
+    [PHP] as PHP
+    [NodeJS] as NodeJS
+    [PowerShell] as PowerShell
+  }
+}
+
+' 关系
+TaskManager --> ExecutorManager
+ExecutorManager --> LogQuery
+
+ExecutorManager <--> EmbedServer : HTTP/RPC
+EmbedServer --> HandlerRegistry
+EmbedServer --> ThreadPool
+
+ThreadPool --> JavaImpl
+ThreadPool --> InternalMethod
+ThreadPool --> HttpRequest
+ThreadPool --> CommandLine
+ThreadPool --> Shell
+ThreadPool --> Python
+ThreadPool --> PHP
+ThreadPool --> NodeJS
+ThreadPool --> PowerShell
+
+ThreadPool --> FileAppender
+LogQuery <--> FileAppender : 日志查询
+
+@enduml 

@@ -1,0 +1,55 @@
+@startuml xxl_job_task_state_diagram
+
+' 样式设置
+skinparam state {
+  BackgroundColor White
+  ArrowColor Black
+  BorderColor Black
+}
+
+' 状态定义
+state "任务创建/配置" as TaskConfig
+state "任务调度触发" as TaskTrigger
+state "任务参数解析" as TaskParamParse
+
+' 处理流程
+state "BEAN模式处理流程" as BeanProcess {
+  state "查找JobHandler" as BeanFind
+  state "反射调用方法" as BeanInvoke
+  state "返回执行结果" as BeanReturn
+}
+
+state "GLUE模式处理流程" as GlueProcess {
+  state "获取GLUE代码" as GlueGet
+  state "动态编译加载" as GlueCompile
+  state "实例化对象" as GlueInstance
+  state "执行任务方法" as GlueExecute
+  state "返回执行结果" as GlueReturn
+}
+
+state "脚本模式处理流程" as ScriptProcess {
+  state "获取脚本内容" as ScriptGet
+  state "创建脚本文件" as ScriptCreate
+  state "调用解释器执行" as ScriptExecute
+  state "获取退出码" as ScriptExitCode
+  state "返回执行结果" as ScriptReturn
+}
+
+state "执行结果处理" as ResultProcess {
+  state "日志记录" as LogRecord
+  state "结果状态设置" as StatusSet
+  state "异步回调调度中心" as Callback
+}
+
+' 转换关系
+TaskConfig --> TaskTrigger
+TaskTrigger --> TaskParamParse
+TaskParamParse --> BeanProcess
+TaskParamParse --> GlueProcess
+TaskParamParse --> ScriptProcess
+
+BeanProcess --> ResultProcess
+GlueProcess --> ResultProcess
+ScriptProcess --> ResultProcess
+
+@enduml 

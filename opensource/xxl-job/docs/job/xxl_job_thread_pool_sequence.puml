@@ -1,0 +1,101 @@
+@startuml XXL-JOB线程池工作流程时序图
+
+' 定义参与者
+actor "调度触发" as Trigger
+participant "JobTriggerPoolHelper" as Helper
+participant "jobTimeoutCountMap" as TimeoutMap
+participant "fastTriggerPool" as FastPool
+participant "slowTriggerPool" as SlowPool
+participant "执行器业务线程池\n(bizThreadPool)" as BizPool
+participant "JobThread" as JobThread
+
+' 定义箭头样式
+skinparam sequenceArrowThickness 2
+skinparam responseMessageBelowArrow true
+
+autonumber
+
+' 开始时序图
+== 任务分流决策过程 ==
+
+Trigger -> Helper : 触发任务(jobId, triggerType, ...)
+activate Helper
+
+Helper -> TimeoutMap : 查询任务超时次数(jobId)
+activate TimeoutMap
+TimeoutMap -> Helper : 返回超时次数(timeoutCount)
+deactivate TimeoutMap
+
+alt timeoutCount > 10
+    Helper -> SlowPool : 将任务提交到慢速池
+    activate SlowPool
+    
+    note right
+        慢速池任务执行特点:
+        1. 队列容量更大(5000)，能容纳更多等待任务
+        2. 最大线程数较少(100)，限制并发执行的慢任务数量
+        3. 适合长耗时任务，避免占用大量线程资源
+    end note
+    
+    SlowPool -> BizPool : HTTP请求执行器
+    SlowPool -> Helper : 任务提交成功
+    deactivate SlowPool
+else 执行次数正常
+    Helper -> FastPool : 将任务提交到快速池
+    activate FastPool
+    
+    note right
+        快速池任务执行特点:
+        1. 队列容量适中(2000)
+        2. 最大线程数较多(200)，提高并发处理能力
+        3. 适合短耗时任务，快速响应
+    end note
+    
+    FastPool -> BizPool : HTTP请求执行器
+    FastPool -> Helper : 任务提交成功
+    deactivate FastPool
+end
+deactivate Helper
+
+== 任务执行与超时统计 ==
+
+BizPool -> JobThread : 添加触发参数到队列
+activate JobThread
+JobThread -> JobThread : 执行任务处理逻辑
+note right: 任务执行开始时记录开始时间(start)
+
+JobThread -> JobThread : 任务执行完成
+note right: 计算任务执行时长: cost = 当前时间 - start
+
+alt cost > 500ms
+    JobThread -> Helper : 通知任务执行超时(jobId)
+    activate Helper
+    Helper -> TimeoutMap : 增加任务超时计数
+    activate TimeoutMap
+    
+    note right
+        执行时间超过500ms被视为一次"超时"
+        这不是真正的任务超时，而是执行时间较长的标记
+        用于后续任务分配到合适的线程池
+    end note
+    
+    TimeoutMap -> Helper : 更新成功
+    deactivate TimeoutMap
+    Helper -> JobThread : 确认收到
+    deactivate Helper
+end
+
+JobThread -> BizPool : 返回执行结果
+deactivate JobThread
+
+== 超时数据定时清理 ==
+
+note over TimeoutMap
+    每分钟自动清理超时统计数据:
+    if (当前分钟 != 上次清理的分钟)
+        清空jobTimeoutCountMap
+        更新上次清理时间
+    end if
+end note
+
+@enduml 

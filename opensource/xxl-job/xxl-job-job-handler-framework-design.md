@@ -28,6 +28,11 @@
       - [4.4.2 多租户环境的资源隔离方案](#442-多租户环境的资源隔离方案)
       - [4.4.3 大规模多租户部署最佳实践](#443-大规模多租户部署最佳实践)
       - [4.4.4 实现示例](#444-实现示例)
+    - [4.5 调度中心与执行器线程池设计](#45-调度中心与执行器线程池设计)
+      - [4.5.1 调度中心线程池](#451-调度中心线程池)
+      - [4.5.2 执行器线程池](#452-执行器线程池)
+      - [4.5.3 Fast/Slow线程池工作原理详解](#453-fastslow线程池工作原理详解)
+      - [4.5.4 线程池优势与配置建议](#454-线程池优势与配置建议)
   - [5. 多语言支持机制](#5-多语言支持机制)
   - [6. UML架构图表](#6-uml架构图表)
     - [6.1 任务处理器类图](#61-任务处理器类图)
@@ -566,6 +571,167 @@ xxl:
       logretentiondays: 30
 ```
 
+### 4.5 调度中心与执行器线程池设计
+
+XXL-JOB在架构设计中采用了分级线程池机制，分别在调度中心和执行器端实现了专用的线程池，确保任务调度和执行的高效性与稳定性。
+
+![XXL-JOB线程池架构](./docs/job/xxl_job_thread_pool_architecture.puml)
+
+#### 4.5.1 调度中心线程池
+
+调度中心主要采用了以下几种线程池来支持不同场景的调度需求：
+
+1. **任务触发线程池（TriggerPool）**：
+
+   ```java
+   // JobTriggerPoolHelper.java
+   private ThreadPoolExecutor fastTriggerPool = null;  // 快速触发池
+   private ThreadPoolExecutor slowTriggerPool = null;  // 慢速触发池
+   ```
+
+   - **快速触发池（fastTriggerPool）**：
+     - 核心线程数：10
+     - 最大线程数：可配置（默认200）
+     - 队列容量：2000
+     - 主要处理执行时间短、响应快的任务触发
+
+   - **慢速触发池（slowTriggerPool）**：
+     - 核心线程数：10
+     - 最大线程数：可配置（默认100）
+     - 队列容量：5000
+     - 主要处理执行时间较长的任务触发（例如前10次调度中有频繁超时的任务）
+
+   - **任务分流机制与执行耗时统计**：
+
+     ```java
+     // 选择线程池
+     ThreadPoolExecutor triggerPool_ = fastTriggerPool;
+     AtomicInteger jobTimeoutCount = jobTimeoutCountMap.get(jobId);
+     if (jobTimeoutCount!=null && jobTimeoutCount.get() > 10) { // 1分钟内超时超过10次
+         triggerPool_ = slowTriggerPool;  // 使用慢速池
+     }
+     
+     // 在任务执行完成后记录执行时间
+     long cost = System.currentTimeMillis()-start;
+     if (cost > 500) {  // 任务执行超过500ms视为"超时"
+         AtomicInteger timeoutCount = jobTimeoutCountMap.putIfAbsent(jobId, new AtomicInteger(1));
+         if (timeoutCount != null) {
+             timeoutCount.incrementAndGet();
+         }
+     }
+     ```
+
+2. **任务注册线程池**（RegistryOrRemoveThreadPool）：
+   - 核心线程数：10
+   - 最大线程数：30
+   - 队列容量：2000
+   - 主要处理执行器的注册与注销请求
+
+3. **任务回调线程池**（CallbackThreadPool）：
+   - 核心线程数：20
+   - 最大线程数：200
+   - 队列容量：5000
+   - 处理任务执行结果的回调请求
+
+#### 4.5.2 执行器线程池
+
+执行器端也采用了专门的线程池来处理来自调度中心的请求和任务执行：
+
+1. **执行器业务线程池**（bizThreadPool）：
+
+   ```java
+   // EmbedServer.java
+   ThreadPoolExecutor bizThreadPool = new ThreadPoolExecutor(
+       0,                  // 核心线程数
+       200,                // 最大线程数
+       60L,                // 空闲线程存活时间
+       TimeUnit.SECONDS,
+       new LinkedBlockingQueue<Runnable>(2000),
+       new ThreadFactory() {...},
+       new RejectedExecutionHandler() {...}
+   );
+   ```
+
+   - 该线程池负责处理所有来自调度中心的HTTP请求（执行任务、查询日志等）
+   - 采用动态线程数配置（核心线程数为0），根据负载自动扩缩容
+   - 当请求过多导致队列满时，会拒绝请求并抛出异常
+
+2. **执行上下文**：
+   - 除业务线程池外，执行器还通过`JobThread`实现了"一个任务一个线程"的执行模型
+   - 每个`JobThread`内部管理着任务的生命周期，包括初始化、执行和销毁
+   - `JobThread`与业务线程池协同工作，业务线程接收请求并将任务提交到对应的`JobThread`
+
+#### 4.5.3 Fast/Slow线程池工作原理详解
+
+XXL-JOB采用了基于任务执行时长统计的自适应分流机制，将任务动态分配到不同特性的线程池中执行：
+
+![XXL-JOB线程池工作流程](./docs/job/xxl_job_thread_pool_sequence.puml)
+
+1. **执行时长统计机制**：
+   - XXL-JOB不是通过任务实际的执行超时来判断，而是通过**执行耗时**来识别"慢任务"
+   - 任务执行完成后，计算执行耗时（cost = 当前时间 - 开始时间）
+   - 如果耗时超过500毫秒，则在`jobTimeoutCountMap`中增加该任务的"超时"计数
+   - 这些统计数据每分钟自动清零一次，实现滚动窗口统计
+
+2. **分流决策逻辑**：
+   - 当触发任务时，首先查询该任务在最近1分钟内的"超时"次数
+   - 如果超时次数超过10次，则将任务提交到`slowTriggerPool`处理
+   - 否则，将任务提交到`fastTriggerPool`处理
+
+3. **快慢线程池的差异化配置**：
+   - **快速池特点**：
+     - 最大线程数较多（默认200）：适合并发处理大量短任务
+     - 队列容量适中（2000）：快任务处理速度快，队列不需要过大
+     - 适用于大多数执行迅速的常规任务
+
+   - **慢速池特点**：
+     - 最大线程数较少（默认100）：限制慢任务并发数，避免资源耗尽
+     - 队列容量较大（5000）：可以缓存更多等待执行的慢任务
+     - 专用于处理执行时间长的任务，避免这些任务占用过多线程资源
+
+4. **分流效果**：
+   - 防止长时间运行的任务占用大量线程资源，导致线程池耗尽
+   - 执行时间长的任务被隔离到专门的线程池，避免影响常规任务的处理
+   - 系统能够自动识别任务特性并动态调整处理策略，无需人工干预
+
+5. **配置优化思路**：
+
+   ```properties
+   # 慢任务较多的环境下，可以适当减小快池线程数，增大慢池线程数
+   xxl.job.triggerpool.fast.max=150
+   xxl.job.triggerpool.slow.max=150
+   
+   # 高并发环境下，可以同时增大两个线程池的线程数
+   xxl.job.triggerpool.fast.max=300
+   xxl.job.triggerpool.slow.max=150
+   ```
+
+#### 4.5.4 线程池优势与配置建议
+
+双层线程池设计（调度中心+执行器）带来了以下优势：
+
+1. **负载隔离**：
+   - 调度线程与执行线程分离，防止相互影响
+   - 快慢任务分离，避免长任务阻塞整个调度系统
+   - 不同类型的操作（触发、注册、回调）使用独立线程池
+
+2. **资源优化**：
+   - 根据任务特性自动选择合适的线程池
+   - 通过队列缓冲削峰填谷，应对突发请求
+   - 动态线程数管理，减少资源浪费
+
+3. **自适应调整**：
+   - 系统能够自动学习任务执行特性
+   - 根据执行历史动态调整资源分配策略
+   - 无需人工干预，减少运维复杂度
+
+4. **大规模部署建议**：
+   - 监控线程池指标，包括活跃线程数、队列深度、拒绝率和任务分配比例
+   - 在超大规模环境下，考虑将调度中心水平分片，不同分片负责不同分组的任务
+   - 为不同业务特性的任务配置不同的执行器集群，进一步实现物理隔离
+
+通过这种多级线程池的设计，XXL-JOB在保证任务调度的高并发处理能力的同时，也确保了系统的稳定性和资源的合理利用。自适应分流机制使得系统能够智能应对不同执行特性的任务，提高整体调度效率。
+
 ## 5. 多语言支持机制
 
 XXL-JOB通过以下机制实现对多种编程语言的支持：
@@ -585,13 +751,13 @@ XXL-JOB通过以下机制实现对多种编程语言的支持：
 
 任务处理器体系类图展示了XXL-JOB中任务处理器的继承体系和关键组件。
 
-![任务处理器体系类图](./docs/task/xxl_job_handler_hierarchy.puml)
+![任务处理器体系类图](./docs/job/xxl_job_handler_hierarchy.puml)
 
 #### 6.1.2 执行器、线程与处理器关系类图
 
 执行器、线程与处理器关系类图展示了`XxlJobExecutor`、`JobThread`和`IJobHandler`之间的关联关系和核心属性/方法。
 
-![执行器、线程与处理器关系类图](./docs/task/xxl_job_executor_thread_relation.puml)
+![执行器、线程与处理器关系类图](./docs/job/xxl_job_executor_thread_relation.puml)
 
 ### 6.2 执行流程图
 
@@ -615,7 +781,7 @@ XXL-JOB通过以下机制实现对多种编程语言的支持：
 >   3. 通过执行器集群分散负载，而不是在单个执行器上运行过多任务
 >   4. 如果确实需要限制执行器的线程数量，可以通过扩展XXL-JOB的源码，在`XxlJobExecutor.registJobThread()`方法中增加线程数量检查逻辑
 
-![组件生命周期时序图](./docs/task/xxl_job_component_lifecycle.puml)
+![组件生命周期时序图](./docs/job/xxl_job_component_lifecycle.puml)
 
 生命周期可分为三个主要阶段：
 
@@ -643,13 +809,13 @@ XXL-JOB通过以下机制实现对多种编程语言的支持：
 
 BEAN模式任务执行时序图展示了从调度中心发起调度请求到最终执行结果回调的完整流程。
 
-![BEAN模式任务执行时序图](./docs/task/xxl_job_bean_mode_sequence.puml)
+![BEAN模式任务执行时序图](./docs/job/xxl_job_bean_mode_sequence.puml)
 
 #### 6.2.3 GLUE脚本模式任务执行时序图
 
 GLUE脚本模式任务执行时序图展示了脚本类任务的特殊执行流程，包括脚本文件的创建和解释器的调用。
 
-![GLUE脚本模式任务执行时序图](./docs/task/xxl_job_script_mode_sequence.puml)
+![GLUE脚本模式任务执行时序图](./docs/job/xxl_job_script_mode_sequence.puml)
 
 ### 6.3 高级UML图表
 
@@ -657,19 +823,19 @@ GLUE脚本模式任务执行时序图展示了脚本类任务的特殊执行流�
 
 任务类型状态转换图展示了不同任务类型从创建、触发到执行结果处理的完整状态转换流程。
 
-![任务类型状态转换图](./docs/task/xxl_job_task_state_diagram.puml)
+![任务类型状态转换图](./docs/job/xxl_job_task_state_diagram.puml)
 
 #### 6.3.2 组件交互图
 
 组件交互图展示了调度中心、执行器及各类任务之间的组件关系和交互方式。
 
-![组件交互图](./docs/task/xxl_job_component_diagram.puml)
+![组件交互图](./docs/job/xxl_job_component_diagram.puml)
 
 #### 6.3.3 数据流图
 
 数据流图展示了任务执行过程中的数据流向，包括各组件的输入、处理和输出。
 
-![数据流图](./docs/task/xxl_job_data_flow_diagram.puml)
+![数据流图](./docs/job/xxl_job_data_flow_diagram.puml)
 
 ## 7. 任务类型实际运用建议
 
@@ -711,4 +877,4 @@ XXL-JOB任务类型体系设计具有以下特点：
 4. **轻量灵活**：可根据实际需求选择最合适的任务类型
 5. **易于集成**：与现有系统和技术栈无缝集成
 
-通过这种设计，XXL-JOB实现了一个功能强大且灵活的分布式任务调度平台，能够满足各种复杂业务场景的调度需求。 
+通过这种设计，XXL-JOB实现了一个功能强大且灵活的分布式任务调度平台，能够满足各种复杂业务场景的调度需求

@@ -1,0 +1,112 @@
+@startuml XXL-JOB线程池架构
+
+' 定义颜色和样式
+skinparam componentStyle uml2
+skinparam component {
+  BackgroundColor<<调度中心>> LightBlue
+  BackgroundColor<<执行器>> LightGreen
+  BorderColor Black
+  FontSize 14
+}
+
+skinparam database {
+  BorderColor Gray
+}
+
+skinparam queue {
+  BackgroundColor LightYellow
+  BorderColor Orange
+}
+
+skinparam note {
+  BackgroundColor LightYellow
+  BorderColor Gray
+}
+
+' 调度中心组件
+package "调度中心" {
+  component [快速触发线程池\n(fastTriggerPool)] as FastPool <<调度中心>> {
+    queue "任务队列\ncapacity=2000" as FastQueue
+  }
+  
+  component [慢速触发线程池\n(slowTriggerPool)] as SlowPool <<调度中心>> {
+    queue "任务队列\ncapacity=5000" as SlowQueue
+  }
+  
+  component [注册线程池\n(registryThreadPool)] as RegPool <<调度中心>>
+  component [回调线程池\n(callbackThreadPool)] as CallbackPool <<调度中心>>
+  
+  component [任务分流器\n(JobTriggerPoolHelper)] as TriggerHelper <<调度中心>>
+  
+  database "任务超时统计\n(jobTimeoutCountMap)" as TimeoutMap
+}
+
+' 执行器组件
+package "执行器" {
+  component [业务线程池\n(bizThreadPool)] as BizPool <<执行器>>
+  
+  component [JobThread映射表\n(jobThreadRepository)] as JobThreadMap <<执行器>> {
+    component [JobThread-1] as JobThread1 <<执行器>> {
+      queue "触发队列-1" as TriggerQueue1
+    }
+    component [JobThread-2] as JobThread2 <<执行器>> {
+      queue "触发队列-2" as TriggerQueue2
+    }
+    component [JobThread-N] as JobThreadN <<执行器>> {
+      queue "触发队列-N" as TriggerQueueN
+    }
+  }
+}
+
+' 关系
+TriggerHelper -down-> FastPool : 1.分配短时任务
+TriggerHelper -down-> SlowPool : 2.分配长时任务
+TriggerHelper -left-> TimeoutMap : 3.查询/更新超时统计
+
+FastPool -down-> BizPool : HTTP请求
+SlowPool -down-> BizPool : HTTP请求
+RegPool -down-> BizPool : 注册/注销
+CallbackPool -up-> BizPool : 接收回调
+
+BizPool -right-> JobThreadMap : 转发任务
+BizPool -down-> JobThread1 : 添加触发参数
+BizPool -down-> JobThread2 : 添加触发参数
+BizPool -down-> JobThreadN : 添加触发参数
+
+' 注释
+note right of FastPool
+  核心线程数: 10
+  最大线程数: 200 (可配置)
+  队列容量: 2000
+  处理执行速度快的任务
+end note
+
+note right of SlowPool
+  核心线程数: 10
+  最大线程数: 100 (可配置)
+  队列容量: 5000
+  处理执行速度慢的任务
+end note
+
+note right of BizPool
+  核心线程数: 0
+  最大线程数: 200
+  队列容量: 2000
+  动态伸缩线程数
+end note
+
+note bottom of TriggerHelper
+  根据任务超时次数决定使用哪个线程池:
+  if (timeoutCount > 10) // 1分钟内超时超过10次
+      使用slowTriggerPool
+  else
+      使用fastTriggerPool
+end note
+
+note bottom of TimeoutMap
+  记录每个任务在1分钟内的超时次数
+  任务执行超过500ms记为一次超时
+  每分钟清空统计数据
+end note
+
+@enduml 

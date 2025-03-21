@@ -1,0 +1,41 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+
+title MemTable的跳表(SkipList)实现
+
+class "头节点" as Head
+class "节点1" as N1
+class "节点2" as N2
+class "节点3" as N3
+class "节点4" as N4
+class "节点5" as N5
+class "尾节点" as Tail
+
+Head -right-> N1 : Level 3
+N1 -right-> Tail : Level 3
+
+Head -down-> Head : Level 2
+Head -right-> N2 : Level 2
+N2 -right-> N3 : Level 2
+N3 -right-> Tail : Level 2
+
+Head -down-> Head : Level 1
+Head -right-> N1 : Level 1
+N1 -right-> N2 : Level 1
+N2 -right-> N3 : Level 1
+N3 -right-> N5 : Level 1
+N5 -right-> Tail : Level 1
+
+Head -down-> Head : Level 0
+Head -right-> N1 : Level 0
+N1 -right-> N2 : Level 0
+N2 -right-> N3 : Level 0
+N3 -right-> N4 : Level 0
+N4 -right-> N5 : Level 0
+N5 -right-> Tail : Level 0
+
+note bottom of N4 : 键值对按键排序存储
+note bottom of Head : 多层索引加速查找
+@enduml 

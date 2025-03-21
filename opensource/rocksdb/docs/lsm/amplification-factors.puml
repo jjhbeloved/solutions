@@ -1,0 +1,27 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+
+title LSM树的三种放大因子
+
+rectangle "LSM树设计权衡" as TRADEOFF
+
+circle "写入放大\n(WAF)" as WAF
+circle "读取放大\n(RAF)" as RAF
+circle "空间放大\n(SAF)" as SAF
+
+WAF -- TRADEOFF
+RAF -- TRADEOFF
+SAF -- TRADEOFF
+
+WAF -- RAF : 相互制约
+RAF -- SAF : 相互制约
+SAF -- WAF : 相互制约
+
+note bottom of WAF : 实际写入/逻辑写入的比值
+note right of RAF : 读取时访问的数据量/实际需要数据的比值
+note bottom of SAF : 存储空间/逻辑数据大小的比值
+
+note top of TRADEOFF : 无法同时优化三个因子
+@enduml 

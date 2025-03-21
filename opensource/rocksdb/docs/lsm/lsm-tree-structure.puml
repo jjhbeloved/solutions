@@ -1,0 +1,43 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+
+title LSM树基本结构
+
+rectangle "内存层" {
+  rectangle "活跃MemTable" as MT1
+  rectangle "不可变MemTable" as MT2
+}
+
+rectangle "磁盘层" {
+  rectangle "Level 0" as L0 {
+    rectangle "SST File 1" as SST1
+    rectangle "SST File 2" as SST2
+    rectangle "SST File 3" as SST3
+  }
+  
+  rectangle "Level 1" as L1 {
+    rectangle "SST File 4" as SST4
+    rectangle "SST File 5" as SST5
+  }
+  
+  rectangle "Level 2" as L2 {
+    rectangle "SST File 6" as SST6
+    rectangle "SST File 7" as SST7
+    rectangle "SST File 8" as SST8
+    rectangle "SST File 9" as SST9
+  }
+}
+
+MT1 -down-> MT2 : 达到大小阈值
+MT2 -down-> L0 : 刷盘
+L0 -down-> L1 : 压缩
+L1 -down-> L2 : 压缩
+
+note right of MT1 : 接收所有写入操作
+note right of MT2 : 等待刷盘到磁盘
+note right of L0 : 文件可能有重叠键范围
+note right of L1 : 文件键范围不重叠
+note bottom of L2 : 容量通常是上一层的10倍
+@enduml 

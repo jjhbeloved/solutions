@@ -1,0 +1,47 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+
+title 压缩(Compaction)过程示意图
+
+rectangle "Level 0" as L0 {
+  rectangle "SST File A (key: 1-5)" as A
+  rectangle "SST File B (key: 3-8)" as B
+}
+
+rectangle "Level 1" as L1 {
+  rectangle "SST File C (key: 1-3)" as C
+  rectangle "SST File D (key: 4-6)" as D
+  rectangle "SST File E (key: 7-9)" as E
+}
+
+rectangle "合并过程" as MERGE {
+  rectangle "读取重叠文件" as READ
+  rectangle "合并数据" as COMBINE
+  rectangle "写入新文件" as WRITE
+  rectangle "更新元数据" as UPDATE
+  
+  READ -down-> COMBINE
+  COMBINE -down-> WRITE
+  WRITE -down-> UPDATE
+}
+
+rectangle "压缩后 Level 1" as L1_AFTER {
+  rectangle "SST File C' (key: 1-3)" as C2
+  rectangle "SST File D' (key: 4-6)" as D2
+  rectangle "SST File E' (key: 7-9)" as E2
+}
+
+A -right-> MERGE
+B -right-> MERGE
+C -right-> MERGE
+D -right-> MERGE
+E -right-> MERGE
+
+MERGE -right-> L1_AFTER
+
+note top of MERGE : 合并重叠键范围
+note bottom of MERGE : 删除过时版本
+note bottom of L1_AFTER : 数据重新组织，无重叠
+@enduml 

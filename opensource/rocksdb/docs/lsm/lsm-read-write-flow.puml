@@ -1,0 +1,68 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+
+title LSM树读写操作流程
+
+actor "客户端" as Client
+
+participant "WAL日志" as WAL
+participant "活跃MemTable" as MemTable
+participant "不可变MemTable" as ImmutableMemTable
+participant "Level 0" as L0
+participant "Level 1...N" as L1N
+participant "压缩服务" as Compaction
+
+== 写入流程 ==
+
+Client -> WAL: 1. 写入日志记录
+activate WAL
+WAL --> Client: 确认
+deactivate WAL
+
+Client -> MemTable: 2. 写入数据
+activate MemTable
+MemTable --> Client: 确认
+deactivate MemTable
+
+note over MemTable: 3. 达到大小阈值
+MemTable -> ImmutableMemTable: 转为不可变状态
+activate ImmutableMemTable
+
+note over MemTable: 4. 创建新的MemTable
+ImmutableMemTable -> L0: 5. 刷盘，生成SST文件
+deactivate ImmutableMemTable
+
+== 读取流程 ==
+
+Client -> MemTable: 1. 查询
+activate MemTable
+MemTable --> Client: 找到数据？
+deactivate MemTable
+
+Client -> ImmutableMemTable: 2. 未找到，继续查询
+activate ImmutableMemTable
+ImmutableMemTable --> Client: 找到数据？
+deactivate ImmutableMemTable
+
+Client -> L0: 3. 未找到，查询L0文件
+activate L0
+L0 --> Client: 找到数据？
+deactivate L0
+
+Client -> L1N: 4. 未找到，查询更高层级
+activate L1N
+L1N --> Client: 返回数据或未找到
+deactivate L1N
+
+== 后台压缩 ==
+
+L0 -[#gray]-> Compaction: 文件数超过阈值
+activate Compaction
+Compaction -[#gray]-> L0: 读取文件
+Compaction -[#gray]-> L1N: 读取有重叠的文件
+Compaction -[#gray]-> L1N: 写入新文件
+deactivate Compaction
+
+@enduml 

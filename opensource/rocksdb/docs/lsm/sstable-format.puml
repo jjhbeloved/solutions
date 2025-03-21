@@ -1,0 +1,36 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+
+title SSTable文件格式 (Block-Based Table)
+
+package "SSTable文件" {
+  rectangle "数据块 (Data Block 1)" as DB1
+  rectangle "数据块 (Data Block 2)" as DB2
+  rectangle "数据块 (Data Block N)" as DBN
+  
+  rectangle "索引块 (Index Block)" as IB
+  rectangle "过滤块 (Filter Block)" as FB
+  rectangle "元数据块 (Meta Block)" as MB
+  rectangle "属性块 (Properties)" as PB
+  rectangle "页脚 (Footer)" as FT
+}
+
+note right of DB1 : 存储排序的键值对
+note right of DB2 : 可独立压缩和访问
+note right of IB : 指向数据块的索引
+note right of FB : 包含布隆过滤器
+note right of MB : 存储统计信息
+note right of PB : 文件级别属性
+note right of FT : 包含文件元信息和校验码
+
+FT -up-> PB : 指向
+FT -up-> IB : 指向
+IB -up-> DB1 : 索引
+IB -up-> DB2 : 索引
+IB -up-> DBN : 索引
+FB .up.> DB1 : 过滤
+FB .up.> DB2 : 过滤
+FB .up.> DBN : 过滤
+@enduml 

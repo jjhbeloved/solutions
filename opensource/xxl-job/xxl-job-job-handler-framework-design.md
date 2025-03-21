@@ -18,6 +18,7 @@
     - [3.5 命令行模式](#35-命令行模式)
   - [4. 任务执行流程](#4-任务执行流程)
     - [4.1 调度中心与执行器通信](#41-调度中心与执行器通信)
+      - [4.1.1 执行结果回调机制](#411-执行结果回调机制)
     - [4.2 任务执行线程管理](#42-任务执行线程管理)
     - [4.3 JobThread资源管理与线程模型分析](#43-jobthread资源管理与线程模型分析)
       - [4.3.1 设计特点](#431-设计特点)
@@ -300,6 +301,62 @@ XXL-JOB采用HTTP作为底层通信协议，实现了一套轻量级的RPC通信
 2. 执行器接收请求并根据任务类型选择对应的处理器执行
 3. 任务执行完毕后异步回调执行结果给调度中心
 
+#### 4.1.1 执行结果回调机制
+
+执行器在完成任务处理后，会通过HTTP方式将执行结果回调给调度中心：
+
+```java
+// JobThread.java
+// 任务执行完成后回调处理
+ReturnT<String> executeResult = null;
+try {
+    // 省略执行任务的代码...
+    
+    // 处理执行结果
+    executeResult = new ReturnT<String>(ReturnT.SUCCESS_CODE, null);
+    
+} catch (Exception e) {
+    // 处理异常...
+    executeResult = new ReturnT<String>(ReturnT.FAIL_CODE, e.toString().substring(0, 2000));
+} finally {
+    // 回调执行结果给调度中心
+    TriggerCallbackThread.pushCallBack(new HandleCallbackParam(
+        triggerParam.getLogId(),
+        triggerParam.getLogDateTime(),
+        executeResult
+    ));
+}
+```
+
+回调的具体实现由`TriggerCallbackThread`负责，主要流程如下：
+
+1. 执行器将执行结果封装成`HandleCallbackParam`对象
+2. 将回调参数添加到回调队列中
+3. 回调线程定期从队列中获取数据，批量回调给调度中心
+4. 如果回调失败，会进行重试，默认最多重试3次
+
+```java
+// TriggerCallbackThread.java
+private void doCallback(List<HandleCallbackParam> callbackParamList) {
+    // 封装回调参数
+    CallbackParamVO callbackParamVO = new CallbackParamVO();
+    callbackParamVO.setCallbackParamList(callbackParamList);
+    
+    // 发送回调请求
+    AdminBiz adminBiz = XxlJobExecutor.getAdminBiz();
+    ReturnT<String> callbackResult = adminBiz.callback(callbackParamVO);
+    
+    // 处理回调结果...
+}
+```
+
+这种异步回调机制具有以下优点：
+
+1. **解耦执行与回调**：任务执行线程与回调线程分离，避免回调过程影响任务执行
+2. **批量处理**：多个回调请求可以合并为一个HTTP请求，减少网络开销
+3. **失败重试**：回调失败会自动重试，提高系统可靠性
+4. **异步非阻塞**：回调过程不会阻塞任务执行线程，提高系统吞吐量
+
 ### 4.2 任务执行线程管理
 
 XXL-JOB对每个任务实例创建一个独立的`JobThread`线程进行管理：
@@ -575,14 +632,13 @@ xxl:
 
 XXL-JOB在架构设计中采用了分级线程池机制，分别在调度中心和执行器端实现了专用的线程池，确保任务调度和执行的高效性与稳定性。
 
-![XXL-JOB线程池架构](./docs/job/xxl_job_thread_pool_architecture.puml)
+![XXL-JOB线程池架构](xxl_job_thread_pool_architecture.puml)
 
 #### 4.5.1 调度中心线程池
 
 调度中心主要采用了以下几种线程池来支持不同场景的调度需求：
 
 1. **任务触发线程池（TriggerPool）**：
-
    ```java
    // JobTriggerPoolHelper.java
    private ThreadPoolExecutor fastTriggerPool = null;  // 快速触发池
@@ -594,7 +650,7 @@ XXL-JOB在架构设计中采用了分级线程池机制，分别在调度中心�
      - 最大线程数：可配置（默认200）
      - 队列容量：2000
      - 主要处理执行时间短、响应快的任务触发
-
+   
    - **慢速触发池（slowTriggerPool）**：
      - 核心线程数：10
      - 最大线程数：可配置（默认100）
@@ -602,7 +658,6 @@ XXL-JOB在架构设计中采用了分级线程池机制，分别在调度中心�
      - 主要处理执行时间较长的任务触发（例如前10次调度中有频繁超时的任务）
 
    - **任务分流机制与执行耗时统计**：
-
      ```java
      // 选择线程池
      ThreadPoolExecutor triggerPool_ = fastTriggerPool;
@@ -632,13 +687,41 @@ XXL-JOB在架构设计中采用了分级线程池机制，分别在调度中心�
    - 最大线程数：200
    - 队列容量：5000
    - 处理任务执行结果的回调请求
+   
+   ```java
+   // JobCompleteHelper.java
+   private ThreadPoolExecutor callbackThreadPool = null;
+   callbackThreadPool = new ThreadPoolExecutor(
+       20,
+       200,
+       60L,
+       TimeUnit.SECONDS,
+       new LinkedBlockingQueue<>(5000),
+       new ThreadFactory() {
+           @Override
+           public Thread newThread(Runnable r) {
+               return new Thread(r, "xxl-job, admin JobCompleteHelper-callbackThreadPool-" + r.hashCode());
+           }
+       },
+       new RejectedExecutionHandler() {
+           @Override
+           public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+               logger.error("xxl-job, callback thread pool is EXHAUSTED!");
+           }
+       });
+   ```
+   
+   回调线程池负责接收和处理来自执行器的任务执行结果回调：
+   - 接收执行器以HTTP方式发送的回调请求
+   - 解析执行结果，更新任务执行状态和日志
+   - 记录任务执行时间，用于任务统计和监控
+   - 处理任务完成后的触发操作（如子任务触发、告警等）
 
 #### 4.5.2 执行器线程池
 
 执行器端也采用了专门的线程池来处理来自调度中心的请求和任务执行：
 
 1. **执行器业务线程池**（bizThreadPool）：
-
    ```java
    // EmbedServer.java
    ThreadPoolExecutor bizThreadPool = new ThreadPoolExecutor(
@@ -651,7 +734,7 @@ XXL-JOB在架构设计中采用了分级线程池机制，分别在调度中心�
        new RejectedExecutionHandler() {...}
    );
    ```
-
+   
    - 该线程池负责处理所有来自调度中心的HTTP请求（执行任务、查询日志等）
    - 采用动态线程数配置（核心线程数为0），根据负载自动扩缩容
    - 当请求过多导致队列满时，会拒绝请求并抛出异常
@@ -665,7 +748,7 @@ XXL-JOB在架构设计中采用了分级线程池机制，分别在调度中心�
 
 XXL-JOB采用了基于任务执行时长统计的自适应分流机制，将任务动态分配到不同特性的线程池中执行：
 
-![XXL-JOB线程池工作流程](./docs/job/xxl_job_thread_pool_sequence.puml)
+![XXL-JOB线程池工作流程](xxl_job_thread_pool_sequence.puml)
 
 1. **执行时长统计机制**：
    - XXL-JOB不是通过任务实际的执行超时来判断，而是通过**执行耗时**来识别"慢任务"
@@ -695,7 +778,6 @@ XXL-JOB采用了基于任务执行时长统计的自适应分流机制，将任�
    - 系统能够自动识别任务特性并动态调整处理策略，无需人工干预
 
 5. **配置优化思路**：
-
    ```properties
    # 慢任务较多的环境下，可以适当减小快池线程数，增大慢池线程数
    xxl.job.triggerpool.fast.max=150
@@ -751,13 +833,13 @@ XXL-JOB通过以下机制实现对多种编程语言的支持：
 
 任务处理器体系类图展示了XXL-JOB中任务处理器的继承体系和关键组件。
 
-![任务处理器体系类图](./docs/job/xxl_job_handler_hierarchy.puml)
+![任务处理器体系类图](./docs/task/xxl_job_handler_hierarchy.puml)
 
 #### 6.1.2 执行器、线程与处理器关系类图
 
 执行器、线程与处理器关系类图展示了`XxlJobExecutor`、`JobThread`和`IJobHandler`之间的关联关系和核心属性/方法。
 
-![执行器、线程与处理器关系类图](./docs/job/xxl_job_executor_thread_relation.puml)
+![执行器、线程与处理器关系类图](./docs/task/xxl_job_executor_thread_relation.puml)
 
 ### 6.2 执行流程图
 
@@ -781,7 +863,7 @@ XXL-JOB通过以下机制实现对多种编程语言的支持：
 >   3. 通过执行器集群分散负载，而不是在单个执行器上运行过多任务
 >   4. 如果确实需要限制执行器的线程数量，可以通过扩展XXL-JOB的源码，在`XxlJobExecutor.registJobThread()`方法中增加线程数量检查逻辑
 
-![组件生命周期时序图](./docs/job/xxl_job_component_lifecycle.puml)
+![组件生命周期时序图](./docs/task/xxl_job_component_lifecycle.puml)
 
 生命周期可分为三个主要阶段：
 
@@ -809,13 +891,13 @@ XXL-JOB通过以下机制实现对多种编程语言的支持：
 
 BEAN模式任务执行时序图展示了从调度中心发起调度请求到最终执行结果回调的完整流程。
 
-![BEAN模式任务执行时序图](./docs/job/xxl_job_bean_mode_sequence.puml)
+![BEAN模式任务执行时序图](./docs/task/xxl_job_bean_mode_sequence.puml)
 
 #### 6.2.3 GLUE脚本模式任务执行时序图
 
 GLUE脚本模式任务执行时序图展示了脚本类任务的特殊执行流程，包括脚本文件的创建和解释器的调用。
 
-![GLUE脚本模式任务执行时序图](./docs/job/xxl_job_script_mode_sequence.puml)
+![GLUE脚本模式任务执行时序图](./docs/task/xxl_job_script_mode_sequence.puml)
 
 ### 6.3 高级UML图表
 
@@ -823,19 +905,19 @@ GLUE脚本模式任务执行时序图展示了脚本类任务的特殊执行流�
 
 任务类型状态转换图展示了不同任务类型从创建、触发到执行结果处理的完整状态转换流程。
 
-![任务类型状态转换图](./docs/job/xxl_job_task_state_diagram.puml)
+![任务类型状态转换图](./docs/task/xxl_job_task_state_diagram.puml)
 
 #### 6.3.2 组件交互图
 
 组件交互图展示了调度中心、执行器及各类任务之间的组件关系和交互方式。
 
-![组件交互图](./docs/job/xxl_job_component_diagram.puml)
+![组件交互图](./docs/task/xxl_job_component_diagram.puml)
 
 #### 6.3.3 数据流图
 
 数据流图展示了任务执行过程中的数据流向，包括各组件的输入、处理和输出。
 
-![数据流图](./docs/job/xxl_job_data_flow_diagram.puml)
+![数据流图](./docs/task/xxl_job_data_flow_diagram.puml)
 
 ## 7. 任务类型实际运用建议
 
@@ -877,4 +959,4 @@ XXL-JOB任务类型体系设计具有以下特点：
 4. **轻量灵活**：可根据实际需求选择最合适的任务类型
 5. **易于集成**：与现有系统和技术栈无缝集成
 
-通过这种设计，XXL-JOB实现了一个功能强大且灵活的分布式任务调度平台，能够满足各种复杂业务场景的调度需求
+通过这种设计，XXL-JOB实现了一个功能强大且灵活的分布式任务调度平台，能够满足各种复杂业务场景的调度需求。 

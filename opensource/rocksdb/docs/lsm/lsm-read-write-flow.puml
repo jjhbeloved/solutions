@@ -1,7 +1,6 @@
 @startuml
 skinparam monochrome true
 skinparam shadowing false
-skinparam defaultFontName Microsoft YaHei
 
 title LSM树读写操作流程
 
@@ -58,11 +57,11 @@ deactivate L1N
 
 == 后台压缩 ==
 
-L0 -[#gray]-> Compaction: 文件数超过阈值
+L0 --> Compaction: 文件数超过阈值
 activate Compaction
-Compaction -[#gray]-> L0: 读取文件
-Compaction -[#gray]-> L1N: 读取有重叠的文件
-Compaction -[#gray]-> L1N: 写入新文件
+Compaction --> L0: 读取文件
+Compaction --> L1N: 读取有重叠的文件
+Compaction --> L1N: 写入新文件
 deactivate Compaction
 
 @enduml 

@@ -1,7 +1,6 @@
 @startuml
 skinparam monochrome true
 skinparam shadowing false
-skinparam defaultFontName Microsoft YaHei
 
 title SSTable文件格式 (Block-Based Table)
 
@@ -30,7 +29,7 @@ FT -up-> IB : 指向
 IB -up-> DB1 : 索引
 IB -up-> DB2 : 索引
 IB -up-> DBN : 索引
-FB .up.> DB1 : 过滤
-FB .up.> DB2 : 过滤
-FB .up.> DBN : 过滤
+FB ..up..> DB1 : 过滤
+FB ..up..> DB2 : 过滤
+FB ..up..> DBN : 过滤
 @enduml 

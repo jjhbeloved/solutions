@@ -1,47 +1,46 @@
 @startuml
 skinparam monochrome true
 skinparam shadowing false
-skinparam defaultFontName Microsoft YaHei
 
-title 压缩(Compaction)过程示意图
+title LSM树压缩过程
 
-rectangle "Level 0" as L0 {
-  rectangle "SST File A (key: 1-5)" as A
-  rectangle "SST File B (key: 3-8)" as B
+package "Level 0" {
+  rectangle "SST文件1 [a-e]" as S1
+  rectangle "SST文件2 [c-h]" as S2
+  rectangle "SST文件3 [f-m]" as S3
 }
 
-rectangle "Level 1" as L1 {
-  rectangle "SST File C (key: 1-3)" as C
-  rectangle "SST File D (key: 4-6)" as D
-  rectangle "SST File E (key: 7-9)" as E
+package "Level 1" {
+  rectangle "SST文件A [a-c]" as A1
+  rectangle "SST文件B [d-g]" as B1
+  rectangle "SST文件C [h-k]" as C1
+  rectangle "SST文件D [l-p]" as D1
 }
 
-rectangle "合并过程" as MERGE {
-  rectangle "读取重叠文件" as READ
-  rectangle "合并数据" as COMBINE
-  rectangle "写入新文件" as WRITE
-  rectangle "更新元数据" as UPDATE
-  
-  READ -down-> COMBINE
-  COMBINE -down-> WRITE
-  WRITE -down-> UPDATE
+rectangle "合并过程" as Merge
+rectangle "临时文件" as Temp
+
+package "合并后的Level 1" {
+  rectangle "SST文件A [a-c]" as A2
+  rectangle "新SST文件E [d-g]" as E2
+  rectangle "新SST文件F [h-m]" as F2
+  rectangle "SST文件D [l-p]" as D2
 }
 
-rectangle "压缩后 Level 1" as L1_AFTER {
-  rectangle "SST File C' (key: 1-3)" as C2
-  rectangle "SST File D' (key: 4-6)" as D2
-  rectangle "SST File E' (key: 7-9)" as E2
-}
+note right of S1 : Level 0文件的键范围可能重叠
+note right of B1 : Level 1文件的键范围不重叠
+note bottom of Merge : 读取重叠键范围文件\n合并相同键的不同版本\n保留最新版本，删除过期数据
+note right of F2 : 合并后创建新文件\n包含更大的键范围\n避免过多小文件
 
-A -right-> MERGE
-B -right-> MERGE
-C -right-> MERGE
-D -right-> MERGE
-E -right-> MERGE
+S1 -down-> Merge
+S2 -down-> Merge
+B1 -down-> Merge
+C1 -down-> Merge
 
-MERGE -right-> L1_AFTER
+Merge -down-> Temp
+Temp -down-> E2
+Temp -down-> F2
 
-note top of MERGE : 合并重叠键范围
-note bottom of MERGE : 删除过时版本
-note bottom of L1_AFTER : 数据重新组织，无重叠
+A1 -down-> A2 : 未参与压缩\n保持不变
+D1 -down-> D2 : 未参与压缩\n保持不变
 @enduml 

@@ -1,27 +1,41 @@
 @startuml
 skinparam monochrome true
 skinparam shadowing false
-skinparam defaultFontName Microsoft YaHei
 
-title LSM树的三种放大因子
+title LSM树放大因子的权衡
 
-rectangle "LSM树设计权衡" as TRADEOFF
+rectangle "写放大(Write Amplification)" as WRITE_AMP
+rectangle "读放大(Read Amplification)" as READ_AMP
+rectangle "空间放大(Space Amplification)" as SPACE_AMP
 
-circle "写入放大\n(WAF)" as WAF
-circle "读取放大\n(RAF)" as RAF
-circle "空间放大\n(SAF)" as SAF
+WRITE_AMP <-> READ_AMP : 互相影响
+READ_AMP <-> SPACE_AMP : 互相影响
+SPACE_AMP <-> WRITE_AMP : 互相影响
 
-WAF -- TRADEOFF
-RAF -- TRADEOFF
-SAF -- TRADEOFF
+note bottom of WRITE_AMP
+  定义: 写入磁盘的数据量/写入数据库的数据量
+  影响: 写入吞吐量、SSD寿命
+end note
 
-WAF -- RAF : 相互制约
-RAF -- SAF : 相互制约
-SAF -- WAF : 相互制约
+note bottom of READ_AMP
+  定义: 读取一个键所需的I/O操作数
+  影响: 读取延迟、读取吞吐量
+end note
 
-note bottom of WAF : 实际写入/逻辑写入的比值
-note right of RAF : 读取时访问的数据量/实际需要数据的比值
-note bottom of SAF : 存储空间/逻辑数据大小的比值
+note bottom of SPACE_AMP
+  定义: 数据库大小/实际用户数据大小
+  影响: 存储效率、内存占用
+end note
 
-note top of TRADEOFF : 无法同时优化三个因子
+note as N1
+  调优LSM树需要在这三个方面进行权衡
+  没有一种配置能够同时优化所有放大因子
+end note
+
+note as N2
+  常见策略:
+  - 增加MemTable大小: 减少写放大，增加空间放大
+  - 增加Level数量: 减少空间放大，增加读放大
+  - 调整压缩策略: 影响写放大和读放大的平衡
+end note
 @enduml 

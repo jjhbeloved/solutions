@@ -1,7 +1,6 @@
 @startuml
 skinparam monochrome true
 skinparam shadowing false
-skinparam defaultFontName Microsoft YaHei
 
 title MemTable的跳表(SkipList)实现
 

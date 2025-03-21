@@ -1,7 +1,6 @@
 @startuml
 skinparam monochrome true
 skinparam shadowing false
-skinparam defaultFontName Microsoft YaHei
 
 title LSM树基本结构
 
@@ -40,4 +39,4 @@ note right of MT2 : 等待刷盘到磁盘
 note right of L0 : 文件可能有重叠键范围
 note right of L1 : 文件键范围不重叠
 note bottom of L2 : 容量通常是上一层的10倍
-@enduml 
+@enduml

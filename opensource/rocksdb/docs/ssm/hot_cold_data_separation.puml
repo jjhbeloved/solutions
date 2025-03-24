@@ -1,0 +1,93 @@
+@startuml hot_cold_data_separation
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+' 定义颜色
+!define HOT_COLOR #FFB6C1
+!define WARM_COLOR #FFD700
+!define COLD_COLOR #87CEEB
+!define READ_COLOR #00CED1
+!define WRITE_COLOR #FFA07A
+
+' 标题
+title 热点数据分离机制
+
+' 总体架构
+package "数据访问层" as AccessLayer {
+    [访问频率统计] as AccessStat
+    [热点检测器] as HotDetector
+    [数据分类器] as Classifier
+}
+
+package "存储层" {
+    database "热数据区域" as HotRegion #HOT_COLOR {
+        [高速存储\n(DRAM/高速SSD)] as HotStorage
+    }
+    
+    database "温数据区域" as WarmRegion #WARM_COLOR {
+        [中速存储\n(普通SSD)] as WarmStorage
+    }
+    
+    database "冷数据区域" as ColdRegion #COLD_COLOR {
+        [低速存储\n(HDD/归档存储)] as ColdStorage
+    }
+}
+
+actor "客户端" as Client
+
+' 连接关系
+Client --> AccessLayer
+AccessLayer --> HotRegion
+AccessLayer --> WarmRegion
+AccessLayer --> ColdRegion
+
+' 序列图部分
+' 使用矩形模拟序列图
+rectangle "数据访问流程" {
+    Client -> AccessStat : 1. 读写请求
+    AccessStat -> HotDetector : 2. 更新访问统计
+    HotDetector -> Classifier : 3. 热点数据标识
+    
+    Classifier -> HotRegion : 4a. 热点数据访问
+    Classifier -> WarmRegion : 4b. 温数据访问
+    Classifier -> ColdRegion : 4c. 冷数据访问
+}
+
+' 数据迁移
+rectangle "数据迁移流程" {
+    HotDetector -> HotStorage : 5a. 冷→热数据提升
+    note right: 访问频率增加
+    
+    HotDetector -> ColdStorage : 5b. 热→冷数据降级
+    note right: 长期未访问
+}
+
+' 访问频率对比
+rectangle "访问频率分布" {
+    rectangle "<color:red><b>热数据</b></color>\n· 占总数据量的10-20%\n· 占总访问量的80-90%" as HotData #HOT_COLOR
+    rectangle "<color:orange><b>温数据</b></color>\n· 占总数据量的20-30%\n· 占总访问量的10-15%" as WarmData #WARM_COLOR
+    rectangle "<color:blue><b>冷数据</b></color>\n· 占总数据量的50-70%\n· 占总访问量的1-5%" as ColdData #COLD_COLOR
+    
+    HotData -[hidden]right-> WarmData
+    WarmData -[hidden]right-> ColdData
+}
+
+' 热点检测策略
+note bottom of HotDetector
+  热点检测策略:
+  1. <b>基于访问频率</b>: 记录每个数据项的访问计数
+  2. <b>基于时间衰减</b>: 考虑访问的时间衰减因子
+  3. <b>基于访问模式</b>: 识别突发访问模式
+  4. <b>基于数据类型</b>: 不同类型数据有不同热点阈值
+end note
+
+' 热点分离的优势
+note bottom of Classifier
+  热点分离的业务价值:
+  1. <b>性能优化</b>: 热点数据使用更快存储
+  2. <b>成本控制</b>: 冷数据使用更经济存储
+  3. <b>资源利用</b>: 更有效利用有限缓存空间
+  4. <b>访问优化</b>: 不同访问模式使用不同优化策略
+end note
+
+@enduml 

@@ -1,0 +1,133 @@
+@startuml prefetching_mechanism
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+' 定义颜色
+!define READ_COLOR #BBDEFB
+!define PREFETCH_COLOR #FFE0B2
+!define HIT_COLOR #C8E6C9
+!define MISS_COLOR #FFCDD2
+
+' 参与者定义
+actor "客户端" as Client
+participant "应用层" as AppLayer
+participant "预读取引擎" as PrefetchEngine
+participant "缓存" as Cache
+participant "存储引擎" as Storage
+
+' 标题
+title 数据预读取机制
+
+' 正常读取操作（无预读取）
+group 普通读取 - 无预读取
+    Client -> AppLayer : 请求数据块A
+    activate AppLayer
+    
+    AppLayer -> Cache : 检查缓存
+    activate Cache
+    Cache -> AppLayer : 缓存未命中
+    deactivate Cache
+    
+    AppLayer -> Storage : 读取数据块A
+    activate Storage
+    Storage -> AppLayer : 返回数据块A
+    deactivate Storage
+    
+    AppLayer -> Cache : 存入缓存
+    activate Cache
+    Cache -> AppLayer : 确认
+    deactivate Cache
+    
+    AppLayer -> Client : 返回数据块A
+    deactivate AppLayer
+    
+    note right: 只读取请求的数据块
+end
+
+' 顺序预读取
+group 顺序预读取
+    Client -> AppLayer : 请求数据块B
+    activate AppLayer
+    
+    AppLayer -> PrefetchEngine : 分析访问模式
+    activate PrefetchEngine
+    PrefetchEngine -> PrefetchEngine : 检测到顺序访问模式
+    
+    PrefetchEngine -> AppLayer : 建议预读取后续块
+    deactivate PrefetchEngine
+    
+    AppLayer -> Cache : 检查缓存(数据块B)
+    activate Cache
+    Cache -> AppLayer : 缓存未命中
+    deactivate Cache
+    
+    AppLayer -> Storage : 读取数据块B
+    activate Storage
+    Storage -> AppLayer : 返回数据块B
+    deactivate Storage
+    
+    AppLayer -> Cache : 存入缓存(数据块B)
+    activate Cache
+    Cache -> AppLayer : 确认
+    deactivate Cache
+    
+    AppLayer -> Client : 返回数据块B
+    
+    ' 异步预读取未来可能需要的块
+    AppLayer ->> PrefetchEngine : 触发异步预读取
+    activate PrefetchEngine
+    
+    PrefetchEngine ->> Storage : 预读取数据块C,D,E
+    activate Storage
+    
+    note right of PrefetchEngine #PREFETCH_COLOR
+      预先加载后续数据块
+      无需等待直接返回
+    end note
+    
+    PrefetchEngine <<- Storage : 返回预读数据
+    deactivate Storage
+    
+    PrefetchEngine ->> Cache : 将预读数据块C,D,E存入缓存
+    activate Cache
+    PrefetchEngine <<- Cache : 确认
+    deactivate Cache
+    
+    deactivate PrefetchEngine
+    deactivate AppLayer
+end
+
+' 后续访问命中预读块
+group 命中预读数据
+    Client -> AppLayer : 请求数据块C
+    activate AppLayer
+    
+    AppLayer -> Cache : 检查缓存
+    activate Cache
+    Cache -> AppLayer : 缓存命中！
+    deactivate Cache
+    
+    AppLayer -> Client : 直接返回数据块C
+    deactivate AppLayer
+    
+    note right #HIT_COLOR: 因为预读取，请求立即得到满足
+end
+
+' 预读取策略
+note right of PrefetchEngine
+  预读取策略类型:
+  1. 顺序预读取 - 读取连续的后续块
+  2. 基于历史的预读取 - 分析历史访问模式
+  3. 感知应用的预读取 - 应用提供访问提示
+end note
+
+' 预读取调优参数
+note right of PrefetchEngine
+  预读取关键参数:
+  - 预读取窗口大小: 一次预读取多少数据
+  - 触发阈值: 什么条件下开始预读取
+  - 预读取距离: 预读取的提前量
+  - 丢弃策略: 何时清理未命中的预读数据
+end note
+
+@enduml 

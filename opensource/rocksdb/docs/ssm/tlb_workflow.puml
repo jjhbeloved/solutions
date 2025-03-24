@@ -1,0 +1,28 @@
+@startuml tlb_workflow
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+actor CPU
+participant TLB
+participant "页表" as PageTable
+participant "物理内存" as Memory
+
+note over TLB: 缓存虚拟地址到物理地址的映射
+
+CPU -> TLB: 请求虚拟地址转换
+
+alt TLB命中
+    TLB -> CPU: 返回物理地址
+    CPU -> Memory: 使用物理地址访问内存
+else TLB未命中
+    TLB -> PageTable: 查询页表
+    PageTable -> Memory: 可能需要多次内存访问
+    Memory -> PageTable: 返回页表项
+    PageTable -> TLB: 更新TLB缓存
+    TLB -> CPU: 返回物理地址
+    CPU -> Memory: 使用物理地址访问内存
+end
+
+note right of TLB: TLB未命中会导致\n额外的内存访问开销\n性能下降10-100倍
+
+@enduml 

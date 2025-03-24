@@ -1,0 +1,142 @@
+@startuml memory_layout_optimization
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+' 标题
+title 内存布局优化图解
+
+' 定义颜色
+!define POOR_COLOR #FFCDD2
+!define GOOD_COLOR #C8E6C9
+!define ALIGN_COLOR #BBDEFB
+!define HOT_COLOR #FF9E80
+!define COLD_COLOR #B3E5FC
+!define PADDING_COLOR #F5F5F5
+
+' 未优化的数据结构布局
+rectangle "未优化布局" as PoorLayout #POOR_COLOR {
+    rectangle "**结构体定义**" as PoorDef {
+        card "struct Record {" as PoorStruct
+        card "  char name[16];     // 16字节" as Field1
+        card "  bool isActive;     // 1字节" as Field2
+        card "  int64_t value;     // 8字节" as Field3
+        card "  int32_t count;     // 4字节" as Field4
+        card "  bool isVisible;    // 1字节" as Field5
+        card "  char desc[32];     // 32字节" as Field6
+        card "  double rate;       // 8字节" as Field7
+        card "  bool isLocked;     // 1字节" as Field8
+        card "}; // 总大小: 88字节 (含填充)" as ClosingBrace
+    }
+    
+    ' 内存布局图示
+    rectangle "**内存布局**" as PoorMemLayout {
+        rectangle "name[16]" as PoorName #white
+        rectangle "isActive" as PoorActive #white
+        rectangle "padding[7]" as PoorPad1 #PADDING_COLOR
+        rectangle "value (8B)" as PoorValue #white
+        rectangle "count (4B)" as PoorCount #white
+        rectangle "isVisible" as PoorVisible #white
+        rectangle "padding[3]" as PoorPad2 #PADDING_COLOR
+        rectangle "desc[32]" as PoorDesc #white
+        rectangle "rate (8B)" as PoorRate #white
+        rectangle "isLocked" as PoorLocked #white
+        rectangle "padding[7]" as PoorPad3 #PADDING_COLOR
+    }
+}
+
+' 优化后的数据结构布局
+rectangle "优化布局" as GoodLayout #GOOD_COLOR {
+    rectangle "**结构体定义(重排序后)**" as GoodDef {
+        card "struct OptimizedRecord {" as GoodStruct
+        card "  // 热点数据区块 (常访问)" as HotComment #HOT_COLOR
+        card "  int64_t value;     // 8字节" as GField1
+        card "  double rate;       // 8字节" as GField2
+        card "  int32_t count;     // 4字节" as GField3
+        card "  bool isActive;     // 1字节" as GField4
+        card "  bool isVisible;    // 1字节" as GField5
+        card "  bool isLocked;     // 1字节" as GField6
+        card "  char padding[1];   // 1字节对齐" as GField7 #PADDING_COLOR
+        card "  // 冷数据区块 (较少访问)" as ColdComment #COLD_COLOR
+        card "  char name[16];     // 16字节" as GField8
+        card "  char desc[32];     // 32字节" as GField9
+        card "}; // 总大小: 72字节" as GoodClosing
+    }
+    
+    ' 优化内存布局图示
+    rectangle "**内存布局**" as GoodMemLayout {
+        ' 热数据区域 - 共享缓存行
+        rectangle "热数据区域 (通常在一个缓存行内)" as HotBlock #HOT_COLOR {
+            rectangle "value (8B)" as GoodValue
+            rectangle "rate (8B)" as GoodRate
+            rectangle "count (4B)" as GoodCount
+            rectangle "flags (3B)" as GoodFlags
+            rectangle "padding (1B)" as GoodPad #PADDING_COLOR
+        }
+        
+        ' 冷数据区域
+        rectangle "冷数据区域" as ColdBlock #COLD_COLOR {
+            rectangle "name[16]" as GoodName
+            rectangle "desc[32]" as GoodDesc
+        }
+    }
+}
+
+' 缓存友好型访问模式
+rectangle "缓存友好的访问模式" as CacheFriendly #ALIGN_COLOR {
+    card "// 按顺序访问数组元素 (优)" as GoodAccess
+    card "for (int i = 0; i < n; i++) {" as Loop1
+    card "    process(array[i]);" as Loop1Body
+    card "}" as Loop1End
+    
+    card "" as Empty1
+    
+    card "// 跳跃访问数组元素 (劣)" as BadAccess
+    card "for (int i = 0; i < n; i += 128) {" as Loop2
+    card "    process(array[i]);" as Loop2Body
+    card "}" as Loop2End
+}
+
+' 数据对齐优化
+rectangle "数据对齐优化" as AlignmentOpt {
+    card "// 确保64字节对齐 (缓存行大小)" as AlignComment
+    card "__attribute__((aligned(64))) struct CacheLine {" as AlignStruct
+    card "    // 结构体内容" as AlignContent
+    card "};" as AlignEnd
+    
+    card "" as Empty2
+    
+    card "// 避免跨缓存行的数据结构" as AvoidComment
+    card "struct ThreadData {" as ThreadStruct
+    card "    int value;" as ThreadValue
+    card "    char padding[60]; // 填充至64字节" as ThreadPadding #PADDING_COLOR
+    card "};" as ThreadEnd
+}
+
+note right of PoorLayout #POOR_COLOR
+  未优化布局问题:
+  - 布尔字段周围有填充字节
+  - 常用和不常用字段混合
+  - 总大小更大(88字节)
+  - 不遵循缓存行边界
+  - 访问热点数据会加载无关冷数据
+end note
+
+note right of GoodLayout #GOOD_COLOR
+  优化布局优势:
+  - 按访问频率分组字段
+  - 热点数据放入同一缓存行
+  - 同类型字段组合减少填充
+  - 总大小更小(72字节)
+  - 更好的缓存利用率
+  - 访问热点数据更高效
+end note
+
+note bottom of AlignmentOpt
+  内存布局优化的性能影响:
+  - 减少缓存未命中: 10-30%性能提升
+  - 减少内存占用: 10-20%内存节省
+  - 减少TLB未命中: 5-15%性能提升
+  - 提高访问局部性: 更好的预取效果
+end note
+
+@enduml 

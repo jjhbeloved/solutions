@@ -1,0 +1,66 @@
+@startuml RocksDB对象生命周期管理
+
+' 标题和注释
+title RocksDB对象生命周期管理
+note as N1
+  RocksDB中对象生命周期管理策略
+  确保资源高效使用与释放
+end note
+
+' 定义组件
+component "持久化数据结构" as PersistentStructures {
+  [SST文件句柄]
+  [布隆过滤器]
+  [索引和元数据]
+}
+
+component "临时操作对象" as TempObjects {
+  [迭代器和光标]
+  [批处理写入缓冲区]
+  [压缩任务对象]
+}
+
+component "缓存资源" as CacheResources {
+  [Block缓存数据]
+  [行缓存记录]
+  [元数据缓存]
+}
+
+component "内存池和分配器" as MemPools {
+  [Arena实例]
+  [自定义分配器]
+}
+
+component "状态快照" as StateSnapshots {
+  [数据库快照]
+  [MemTable快照]
+}
+
+' 定义生命周期管理策略
+cloud "基于范围的生命周期" as scope_based
+cloud "引用计数" as ref_counting
+cloud "分层释放策略" as hierarchical
+cloud "延迟释放" as delayed
+cloud "资源池化" as pooling
+
+' 关联关系
+TempObjects --> scope_based
+PersistentStructures --> ref_counting
+[SST文件句柄] --> ref_counting
+[Arena实例] --> hierarchical
+[批处理写入缓冲区] --> scope_based
+CacheResources --> delayed
+[迭代器和光标] --> pooling
+MemPools --> hierarchical
+
+' 生命周期阶段
+node "创建阶段" as creation
+node "活跃阶段" as active
+node "销毁阶段" as destruction
+
+' 对象生命周期
+creation --> active : 初始化
+active --> destruction : 结束使用
+destruction --> creation : 对象池重用
+
+@enduml 

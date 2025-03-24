@@ -1,0 +1,132 @@
+@startuml multi_level_cache
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+' 定义颜色
+!define L1_COLOR #FFD1DC
+!define L2_COLOR #FFE4C4
+!define DISK_COLOR #DCDCDC
+!define REQUEST_COLOR #87CEFA
+!define HIT_COLOR #98FB98
+!define MISS_COLOR #FFA07A
+
+actor "客户端请求" as Client
+participant "L1缓存\n(进程内存)" as L1 #L1_COLOR
+participant "L2缓存\n(共享内存)" as L2 #L2_COLOR
+participant "块缓存\n(磁盘缓存)" as BlockCache #DISK_COLOR
+participant "存储引擎" as Storage
+
+' 标题
+title 多级缓存机制
+
+' 缓存命中场景
+group L1缓存命中
+    Client -> L1 : 查询数据
+    activate L1
+    L1 -> L1 : 检查L1缓存
+    note right: 缓存命中!
+    L1 -> Client : 返回数据
+    deactivate L1
+    
+    note over Client, L1 #HIT_COLOR: 延迟: <100ns
+end
+
+' L1缓存未命中但L2命中
+group L1缓存未命中，L2缓存命中
+    Client -> L1 : 查询数据
+    activate L1
+    L1 -> L1 : 检查L1缓存
+    note right: 缓存未命中
+    L1 -> L2 : 查询L2缓存
+    activate L2
+    L2 -> L2 : 检查L2缓存
+    note right: 缓存命中!
+    L2 -> L1 : 返回数据
+    deactivate L2
+    L1 -> L1 : 更新L1缓存
+    L1 -> Client : 返回数据
+    deactivate L1
+    
+    note over Client, L2 #HIT_COLOR: 延迟: 几微秒
+end
+
+' L1和L2都未命中但块缓存命中
+group L1/L2缓存未命中，块缓存命中
+    Client -> L1 : 查询数据
+    activate L1
+    L1 -> L1 : 检查L1缓存
+    note right: 缓存未命中
+    L1 -> L2 : 查询L2缓存
+    activate L2
+    L2 -> L2 : 检查L2缓存
+    note right: 缓存未命中
+    L2 -> BlockCache : 查询块缓存
+    activate BlockCache
+    BlockCache -> BlockCache : 检查块缓存
+    note right: 缓存命中!
+    BlockCache -> L2 : 返回数据
+    deactivate BlockCache
+    L2 -> L2 : 更新L2缓存
+    L2 -> L1 : 返回数据
+    deactivate L2
+    L1 -> L1 : 更新L1缓存
+    L1 -> Client : 返回数据
+    deactivate L1
+    
+    note over Client, BlockCache #HIT_COLOR: 延迟: 几百微秒
+end
+
+' 所有缓存都未命中
+group 所有缓存未命中
+    Client -> L1 : 查询数据
+    activate L1
+    L1 -> L1 : 检查L1缓存
+    note right: 缓存未命中
+    L1 -> L2 : 查询L2缓存
+    activate L2
+    L2 -> L2 : 检查L2缓存
+    note right: 缓存未命中
+    L2 -> BlockCache : 查询块缓存
+    activate BlockCache
+    BlockCache -> BlockCache : 检查块缓存
+    note right: 缓存未命中
+    BlockCache -> Storage : 从存储读取
+    activate Storage
+    Storage -> BlockCache : 返回数据
+    deactivate Storage
+    BlockCache -> BlockCache : 更新块缓存
+    BlockCache -> L2 : 返回数据
+    deactivate BlockCache
+    L2 -> L2 : 更新L2缓存
+    L2 -> L1 : 返回数据
+    deactivate L2
+    L1 -> L1 : 更新L1缓存
+    L1 -> Client : 返回数据
+    deactivate L1
+    
+    note over Client, Storage #MISS_COLOR: 延迟: 毫秒级
+end
+
+' 替换策略
+note right of L1
+  L1缓存替换策略:
+  - LRU (最近最少使用)
+  - 容量通常较小 (几MB~几百MB)
+  - 访问速度最快
+end note
+
+note right of L2
+  L2缓存替换策略:
+  - ARC/CLOCK/LFU
+  - 容量较大 (几百MB~几GB)
+  - 可以在进程间共享
+end note
+
+note right of BlockCache
+  块缓存替换策略:
+  - 可定制替换算法
+  - 容量大 (几GB~几十GB)
+  - 可以持久化到SSD
+end note
+
+@enduml 

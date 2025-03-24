@@ -1,0 +1,30 @@
+@startuml memory_hierarchy
+skinparam dpi 300
+
+rectangle "系统内存" as SystemMemory {
+  rectangle "RocksDB实例" as RocksDB {
+    rectangle "DB级别内存限制" as DBLimit
+    rectangle "缓存级别限制" as CacheLimit
+    
+    rectangle "列族CF1" as CF1
+    rectangle "列族CF2" as CF2
+    
+    rectangle "Block Cache" as BlockCache {
+      rectangle "分片1" as Shard1
+      rectangle "分片2" as Shard2
+    }
+    
+    rectangle "表缓存" as TableCache
+  }
+}
+
+RocksDB --> DBLimit
+RocksDB --> CacheLimit
+
+DBLimit --> CF1
+DBLimit --> CF2
+
+CacheLimit --> BlockCache
+CacheLimit --> TableCache
+
+@enduml 

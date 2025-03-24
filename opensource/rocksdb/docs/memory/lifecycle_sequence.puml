@@ -1,0 +1,91 @@
+@startuml MemTable生命周期序列图
+
+title MemTable完整生命周期序列图
+
+actor 用户 as User
+participant "DBImpl" as DB
+participant "ColumnFamilyData" as CFD
+participant "MemTable\n(活跃)" as ActiveMT
+participant "MemTable\n(不可变)" as ImmutableMT
+participant "Arena" as Arena
+participant "FlushJob" as Flush
+participant "SST文件" as SST
+
+box "创建阶段"
+    User -> DB: Write(key, value)
+    activate DB
+    
+    DB -> CFD: 获取当前活跃MemTable
+    activate CFD
+    
+    alt 新创建MemTable
+        CFD -> Arena: 创建新Arena
+        activate Arena
+        Arena --> CFD: 返回Arena实例
+        
+        CFD -> ActiveMT: 创建新MemTable(arena)
+        activate ActiveMT
+        ActiveMT --> CFD: 返回MemTable实例
+        CFD --> DB: 返回活跃MemTable
+    else 使用现有MemTable
+        CFD --> DB: 返回活跃MemTable
+    end
+    deactivate CFD
+end box
+
+box "写入阶段"
+    DB -> ActiveMT: Add(key, value, seq)
+    ActiveMT -> Arena: Allocate(size)
+    Arena --> ActiveMT: 返回内存地址
+    ActiveMT -> ActiveMT: 写入数据到Arena分配的内存
+    ActiveMT --> DB: 写入成功
+    DB --> User: 写入完成
+    deactivate DB
+end box
+
+box "转换阶段"
+    User -> DB: Write(key, value) 
+    activate DB
+    DB -> CFD: 检查MemTable大小
+    activate CFD
+    
+    alt MemTable已满
+        CFD -> ActiveMT: 标记为不可变
+        ActiveMT -> ImmutableMT: 状态转换
+        CFD -> Arena: 创建新Arena
+        Arena --> CFD: 返回新Arena实例
+        CFD -> ActiveMT: 创建新MemTable
+        CFD --> DB: MemTable已切换
+        DB -> Flush: 安排刷新任务
+        activate Flush
+    else MemTable未满
+        CFD --> DB: 继续使用当前MemTable
+    end
+    deactivate CFD
+    DB --> User: 写入处理
+    deactivate DB
+end box
+
+box "刷新阶段"
+    Flush -> ImmutableMT: 构建SST文件
+    ImmutableMT --> Flush: 提供数据迭代器
+    Flush -> SST: 写入数据
+    activate SST
+    Flush --> DB: 刷新完成
+    deactivate Flush
+end box
+
+box "销毁阶段"
+    DB -> CFD: 移除已刷新的MemTable
+    CFD -> ImmutableMT: 销毁
+    activate ImmutableMT
+    ImmutableMT -> Arena: 销毁
+    activate Arena
+    Arena -> Arena: 释放所有内存块
+    destroy Arena
+    destroy ImmutableMT
+    DB -> DB: 更新版本
+    DB --> User: 资源释放完成
+end box
+
+@enduml 

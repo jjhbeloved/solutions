@@ -1,0 +1,139 @@
+@startuml memtable_optimization
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+' 颜色定义
+!define BASE_COLOR #E1F5FE
+!define OPT_COLOR #B3E5FC
+!define ARENA_COLOR #81D4FA
+!define ARROW_COLOR #29B6F6
+!define KEY_COLOR #FFD54F
+!define VALUE_COLOR #FFF176
+
+' 标题
+title RocksDB MemTable优化技术
+
+' 未优化的MemTable
+package "普通跳表结构" as BasicSkipList {
+    class "Node" as BasicNode {
+        + key_
+        + value_
+        + forward_[levels]
+    }
+    
+    rectangle "内存分配" as BasicAlloc {
+        rectangle "节点1" as BasicNode1 #BASE_COLOR
+        rectangle "节点2" as BasicNode2 #BASE_COLOR
+        rectangle "节点3" as BasicNode3 #BASE_COLOR
+    }
+    
+    note bottom of BasicAlloc
+      问题:
+      - 每个节点单独分配内存
+      - 指针间接访问value
+      - 内存碎片化
+      - 缓存不友好
+    end note
+}
+
+' 优化的MemTable
+package "优化的MemTable设计" as OptimizedMemTable {
+    ' Arena内存池
+    package "Arena内存池" as Arena #ARENA_COLOR {
+        rectangle "大块1(4KB)" as ArenaBlock1 #ARENA_COLOR
+        rectangle "大块2(4KB)" as ArenaBlock2 #ARENA_COLOR
+        rectangle "大块3(4KB)" as ArenaBlock3 #ARENA_COLOR
+        
+        ArenaBlock1 -[hidden]right-> ArenaBlock2
+        ArenaBlock2 -[hidden]right-> ArenaBlock3
+    }
+    
+    ' 跳表节点内联
+    rectangle "跳表节点优化" as NodeOpt #OPT_COLOR {
+        rectangle "内联小值节点" as InlineNode #OPT_COLOR {
+            rectangle "Key(内联)" as InlineKey #KEY_COLOR
+            rectangle "Value(内联)" as InlineValue #VALUE_COLOR
+            rectangle "NextPointers[]" as InlineNext #OPT_COLOR
+        }
+        
+        rectangle "指针引用大值节点" as PtrNode #OPT_COLOR {
+            rectangle "Key(内联)" as PtrKey #KEY_COLOR
+            rectangle "Value指针" as PtrValuePtr #OPT_COLOR
+            rectangle "NextPointers[]" as PtrNext #OPT_COLOR
+        }
+        
+        InlineNode -[hidden]right-> PtrNode
+    }
+    
+    ' 前缀压缩
+    rectangle "前缀压缩" as PrefixComp #OPT_COLOR {
+        rectangle "完整键" as FullKey #KEY_COLOR {
+            text "user12345:profile:name"
+        }
+        
+        rectangle "前缀压缩键" as CompressedKey #KEY_COLOR {
+            text "user12345" #KEY_COLOR
+            text ":profile" #KEY_COLOR
+            text ":email" #KEY_COLOR
+        }
+        
+        FullKey -[hidden]right-> CompressedKey
+    }
+    
+    note bottom of PrefixComp
+      前缀压缩优势:
+      - 减少内存使用
+      - 提高缓存命中率
+      - 键比较更高效
+    end note
+}
+
+' 内存使用和布局对比
+rectangle "内存布局对比" as MemoryLayoutCompare {
+    ' 传统布局
+    rectangle "传统内存布局" as TraditionalLayout #BASE_COLOR {
+        rectangle "节点1" as TNode1 #BASE_COLOR
+        rectangle "..." as TDots1 #BASE_COLOR
+        rectangle "值1" as TValue1 #VALUE_COLOR
+        
+        rectangle "节点2" as TNode2 #BASE_COLOR
+        rectangle "..." as TDots2 #BASE_COLOR
+        rectangle "值2" as TValue2 #VALUE_COLOR
+        
+        rectangle "节点3" as TNode3 #BASE_COLOR
+        rectangle "..." as TDots3 #BASE_COLOR
+        rectangle "值3" as TValue3 #VALUE_COLOR
+    }
+    
+    ' 优化布局
+    rectangle "优化内存布局" as OptimizedLayout #OPT_COLOR {
+        rectangle "连续内存块" as OptBlock #ARENA_COLOR {
+            rectangle "节点1+值1" as OptNode1 #OPT_COLOR
+            rectangle "节点2+值2" as OptNode2 #OPT_COLOR
+            rectangle "节点3+值3" as OptNode3 #OPT_COLOR
+            rectangle "..." as OptDots #OPT_COLOR
+        }
+    }
+    
+    TraditionalLayout -[hidden]right-> OptimizedLayout
+}
+
+' 性能优化统计
+rectangle "性能优势" as PerformanceGains {
+    card "<b>内存使用</b>: 减少40-60%" as MemUsage
+    card "<b>写入吞吐量</b>: 提高50-100%" as WritePerf
+    card "<b>读取延迟</b>: 降低20-30%" as ReadPerf
+    card "<b>缓存命中率</b>: 提高30-50%" as CacheHit
+}
+
+' 关键优化点
+note bottom of OptimizedMemTable
+  MemTable核心优化技术:
+  1. <b>Arena内存池</b>: 批量分配内存，减少系统调用和内存碎片
+  2. <b>内联小值</b>: 直接存储在跳表节点中，减少指针间接
+  3. <b>前缀压缩</b>: 相邻键共享前缀，减少内存使用
+  4. <b>内存布局优化</b>: 相关数据放在一起，提高缓存命中率
+  5. <b>并发控制优化</b>: 细粒度锁和无锁技术提高并发性能
+end note
+
+@enduml 

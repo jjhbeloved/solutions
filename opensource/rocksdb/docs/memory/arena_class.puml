@@ -1,0 +1,27 @@
+@startuml arena_class
+!theme plain
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+skinparam backgroundColor white
+skinparam classBackgroundColor #F8F8F8
+skinparam classBorderColor #333333
+
+class Arena {
+  - blocks: vector<char*>
+  - alloc_bytes_remaining: size_t
+  - blocks_memory: size_t
+  - current_block: char*
+  - current_block_offset: size_t
+  --
+  + Allocate(size_t): char*
+  + AllocateAligned(size_t): char*
+  + MemoryUsage(): size_t
+  + Reset(): void
+}
+
+note top of Arena
+  Arena是RocksDB的内存池实现，
+  用于高效分配和回收内存
+end note
+
+@enduml 

@@ -1,0 +1,115 @@
+@startuml write_amplification
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+' 定义颜色和样式
+skinparam rectangle {
+    BackgroundColor White
+    BorderColor Black
+}
+
+skinparam arrow {
+    Color Black
+    FontStyle Bold
+}
+
+' 定义参与者
+actor "应用程序" as App
+participant "存储引擎" as Engine
+participant "内部数据结构" as InternalDS
+collections "磁盘数据" as Disk
+
+' 标题和说明
+title 写放大问题图解
+
+note over App, Disk
+  **写放大**: 实际写入的数据量远大于应用程序请求写入的数据量
+end note
+
+' 图示序列
+== 应用程序写入 (4KB数据) ==
+App -> Engine : 写入4KB数据
+activate Engine
+
+Engine -> InternalDS : 更新内存中的数据结构
+activate InternalDS
+
+InternalDS -> Disk : 写入WAL日志 (4KB)
+activate Disk
+InternalDS <-- Disk : 确认
+deactivate Disk
+
+note right of Disk : 写入1: 4KB(WAL)
+
+Engine <-- InternalDS : 更新完成
+deactivate InternalDS
+
+App <-- Engine : 写入成功
+deactivate Engine
+
+== 后台合并和压缩 ==
+Engine -> Engine : 触发合并操作
+activate Engine
+
+Engine -> Disk : 读取现有数据 (100KB)
+activate Disk
+Engine <-- Disk : 返回数据
+deactivate Disk
+
+note right : 读取: 100KB
+
+Engine -> Engine : 合并新旧数据 (104KB)
+Engine -> Disk : 写入新的SST文件 (104KB)
+activate Disk
+Engine <-- Disk : 确认
+deactivate Disk
+
+note right of Disk : 写入2: 104KB(SST)
+
+Engine -> Disk : 更新元数据 (1KB)
+activate Disk
+Engine <-- Disk : 确认
+deactivate Disk
+
+note right of Disk : 写入3: 1KB(元数据)
+
+Engine -> Disk : 删除旧文件记录 (1KB)
+activate Disk
+Engine <-- Disk : 确认
+deactivate Disk
+
+note right of Disk : 写入4: 1KB(删除记录)
+
+deactivate Engine
+
+== SSD垃圾回收 ==
+Disk -> Disk : 触发垃圾回收
+activate Disk
+
+Disk -> Disk : 重新组织数据块 (200KB)
+Disk -> Disk : 擦除旧块并写入新块
+deactivate Disk
+
+note right of Disk : 写入5: 200KB(GC)
+
+' 写放大统计
+note bottom of Disk
+  应用程序写入: 4KB
+  实际磁盘写入: 4KB(WAL) + 104KB(SST) + 1KB(元数据) + 1KB(删除记录) + 200KB(GC) = 310KB
+  **写放大因子**: 310KB ÷ 4KB = 77.5倍
+end note
+
+== 写放大优化策略 ==
+rectangle "优化策略" {
+    rectangle "增量更新" as Incr #E3F2FD
+    rectangle "数据分区" as Part #E8F5E9
+    rectangle "压缩算法" as Comp #FFF8E1
+    rectangle "批量写入" as Batch #FCE4EC
+}
+
+note bottom of Part
+  通过恰当的优化可将写放大
+  因子降低到10倍以下
+end note
+
+@enduml 

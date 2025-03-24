@@ -1,0 +1,50 @@
+@startuml write_buffer_structure
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+participant "应用程序" as App
+participant "内存写缓冲区" as WriteBuffer
+participant "批量提交队列" as CommitQueue
+participant "存储引擎" as Storage
+participant "持久化设备" as Disk
+
+== 写入流程 ==
+
+App -> WriteBuffer : 写入1
+activate WriteBuffer
+WriteBuffer -> App : 立即返回成功
+deactivate WriteBuffer
+
+App -> WriteBuffer : 写入2
+activate WriteBuffer
+WriteBuffer -> App : 立即返回成功
+deactivate WriteBuffer
+
+App -> WriteBuffer : 写入3
+activate WriteBuffer
+WriteBuffer -> App : 立即返回成功
+deactivate WriteBuffer
+
+note right of WriteBuffer : 内存写缓冲区已满或达到阈值
+
+WriteBuffer -> CommitQueue : 批量提交多个写入操作
+activate CommitQueue
+
+App -> WriteBuffer : 写入4 (开始新的批次)
+activate WriteBuffer
+WriteBuffer -> App : 立即返回成功
+deactivate WriteBuffer
+
+CommitQueue -> Storage : 执行批量写入
+activate Storage
+Storage -> Disk : 持久化数据
+activate Disk
+Disk -> Storage : 写入完成
+deactivate Disk
+Storage -> CommitQueue : 批量提交成功
+deactivate Storage
+deactivate CommitQueue
+
+note left : 批量写入优势:\n1. 减少系统调用次数\n2. 提高随机写吞吐量\n3. 减少磁盘寻道开销
+
+@enduml 

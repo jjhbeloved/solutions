@@ -1,0 +1,70 @@
+@startuml cpu_cache_structure
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+rectangle "CPU" {
+    rectangle "核心1" as Core1 {
+        rectangle "L1-I\n指令缓存\n32KB" as L1I1 #FFDDCC
+        rectangle "L1-D\n数据缓存\n32KB" as L1D1 #FFDDCC
+        
+        L1I1 -[hidden]right- L1D1
+        
+        rectangle "L2缓存\n256KB-1MB" as L2_1 #FFEECC
+        
+        L1I1 -down-> L2_1
+        L1D1 -down-> L2_1
+    }
+    
+    rectangle "核心2" as Core2 {
+        rectangle "L1-I\n指令缓存\n32KB" as L1I2 #FFDDCC
+        rectangle "L1-D\n数据缓存\n32KB" as L1D2 #FFDDCC
+        
+        L1I2 -[hidden]right- L1D2
+        
+        rectangle "L2缓存\n256KB-1MB" as L2_2 #FFEECC
+        
+        L1I2 -down-> L2_2
+        L1D2 -down-> L2_2
+    }
+    
+    rectangle "共享L3缓存\n4-50MB" as L3 #FFFFCC
+    
+    Core1 -[hidden]right- Core2
+    
+    L2_1 -down-> L3
+    L2_2 -down-> L3
+}
+
+rectangle "主内存(RAM)" as RAM
+
+L3 -down-> RAM
+
+note right of L1I1
+  L1缓存:
+  - 访问延迟: 1-3个周期
+  - 分离的指令和数据缓存
+  - 容量小但极快
+end note
+
+note right of L2_2
+  L2缓存:
+  - 访问延迟: ~10个周期
+  - 统一的指令和数据缓存
+  - 每个核心独立
+end note
+
+note right of L3
+  L3缓存:
+  - 访问延迟: 30-40个周期
+  - 所有核心共享
+  - 容量大但相对较慢
+end note
+
+note left of Core1
+  缓存行 (Cache Line):
+  - 缓存管理的基本单位
+  - 通常为64字节
+  - 数据传输的最小粒度
+end note
+
+@enduml 

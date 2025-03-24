@@ -1,0 +1,165 @@
+@startuml memory_allocation_strategy
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+' 标题
+title 内存分配与回收策略
+
+' 定义颜色
+!define SMALL_COLOR #E3F2FD
+!define MEDIUM_COLOR #BBDEFB
+!define LARGE_COLOR #90CAF9
+!define FREE_COLOR #C8E6C9
+!define USED_COLOR #FFCDD2
+!define SYS_COLOR #F5F5F5
+
+' 基于大小的分配策略图
+package "内存分配策略" as AllocStrategy {
+    rectangle "小对象分配器\n(0-256字节)" as SmallAllocator #SMALL_COLOR {
+        rectangle "固定大小块1\n(8字节)" as SmallBlock1 #SMALL_COLOR
+        rectangle "固定大小块2\n(16字节)" as SmallBlock2 #SMALL_COLOR
+        rectangle "固定大小块3\n(32字节)" as SmallBlock3 #SMALL_COLOR
+        rectangle "...\n(各种尺寸)" as SmallBlockEtc #SMALL_COLOR
+        
+        SmallBlock1 -[hidden]right-> SmallBlock2
+        SmallBlock2 -[hidden]right-> SmallBlock3
+        SmallBlock3 -[hidden]right-> SmallBlockEtc
+    }
+    
+    rectangle "中等对象分配器\n(256-8K字节)" as MediumAllocator #MEDIUM_COLOR {
+        rectangle "页面分配\n(连续内存块)" as MediumBlock #MEDIUM_COLOR
+    }
+    
+    rectangle "大对象分配器\n(>8K字节)" as LargeAllocator #LARGE_COLOR {
+        rectangle "直接系统分配\n(mmap/VirtualAlloc)" as LargeBlock #LARGE_COLOR
+    }
+    
+    note right of SmallAllocator
+      小对象优化:
+      - 预分配内存池
+      - 对象大小分级
+      - 内部碎片管理
+      - 快速分配与回收
+      - 相同大小对象复用
+    end note
+    
+    note right of MediumAllocator
+      中等对象策略:
+      - 页面级别管理
+      - 适当内部碎片
+      - 块合并和拆分
+      - 平衡速度和内存利用率
+    end note
+    
+    note right of LargeAllocator
+      大对象策略:
+      - 直接系统调用
+      - 避免复制开销
+      - 独立生命周期管理
+      - 特殊释放机制
+    end note
+}
+
+' 示例内存布局
+rectangle "内存池布局示例" as MemoryLayout {
+    rectangle "块头部信息" as BlockHeader #SYS_COLOR
+    
+    rectangle "已分配对象" as UsedObj1 #USED_COLOR
+    rectangle "已分配对象" as UsedObj2 #USED_COLOR
+    rectangle "已分配对象" as UsedObj3 #USED_COLOR
+    rectangle "空闲块" as FreeBlock1 #FREE_COLOR
+    rectangle "已分配对象" as UsedObj4 #USED_COLOR
+    rectangle "空闲块" as FreeBlock2 #FREE_COLOR
+    rectangle "已分配对象" as UsedObj5 #USED_COLOR
+    
+    BlockHeader -[hidden]down-> UsedObj1
+    UsedObj1 -[hidden]right-> UsedObj2
+    UsedObj2 -[hidden]right-> UsedObj3
+    UsedObj3 -[hidden]right-> FreeBlock1
+    FreeBlock1 -[hidden]right-> UsedObj4
+    UsedObj4 -[hidden]right-> FreeBlock2
+    FreeBlock2 -[hidden]right-> UsedObj5
+}
+
+' 内存分配决策流程
+rectangle "分配策略流程" as AllocationFlow {
+    start
+    :请求分配内存;
+    
+    if (内存大小?) then (小对象\n≤256B)
+        :根据大小找到对应的小对象池;
+        if (有空闲块?) then (是)
+            :从空闲列表获取已有块;
+        else (否)
+            :从当前块分配;
+            if (当前块空间不足?) then (是)
+                :请求新内存块;
+            endif
+        endif
+    elseif (内存大小?) then (中等对象\n≤8KB)
+        :使用页面分配器;
+        if (有合适页面?) then (是)
+            :从现有页面分配;
+        else (否)
+            :分配新页面;
+        endif
+    else (大对象\n>8KB)
+        :直接向系统请求内存;
+    endif
+    
+    :返回内存指针;
+    stop
+}
+
+' 释放策略
+rectangle "释放策略" as DeallocStrategy {
+    card "小对象释放策略:" as SmallFree
+    card "- 返回到对应大小的空闲列表" as SmallFree1
+    card "- 延迟释放/批量释放" as SmallFree2
+    card "- 内存复用优先于系统回收" as SmallFree3
+    
+    card "" as Empty
+    
+    card "大对象释放策略:" as LargeFree
+    card "- 可能直接返回系统" as LargeFree1
+    card "- 考虑内存碎片整理" as LargeFree2
+    card "- 阈值控制，防止频繁释放" as LargeFree3
+}
+
+' 特殊优化
+rectangle "特殊优化技术" as SpecialOpt {
+    card "线程本地缓存" as TLCache
+    card "- 减少线程间竞争" as TLCache1
+    card "- 提高局部性" as TLCache2
+    
+    card "" as Empty2
+    
+    card "对象池" as ObjPool
+    card "- 对象预创建和复用" as ObjPool1
+    card "- 减少构造和析构成本" as ObjPool2
+    
+    card "" as Empty3
+    
+    card "垃圾回收" as GC
+    card "- 自动内存管理" as GC1
+    card "- 周期性整理和压缩" as GC2
+}
+
+note bottom of MemoryLayout
+  块状态管理:
+  - 空闲块通过链表连接
+  - 已分配块包含使用标记
+  - 相邻空闲块可能合并
+  - 大小信息存储在块头部
+end note
+
+note bottom of AllocStrategy
+  分配策略设计原则:
+  1. 根据对象大小分级处理
+  2. 频繁分配操作优化为常数时间
+  3. 减少内存碎片
+  4. 平衡速度和空间效率
+  5. 考虑多线程访问模式
+end note
+
+@enduml 

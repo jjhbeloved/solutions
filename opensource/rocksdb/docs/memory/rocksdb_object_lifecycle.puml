@@ -1,0 +1,154 @@
+@startuml rocksdb_object_lifecycle
+
+' 标题
+title RocksDB对象生命周期管理
+
+' 顶层DB对象
+rectangle "RocksDB" as RocksDB {
+    rectangle "DB实例" as DBInstance {
+        card "创建时机: 应用启动" as DBCreate
+        card "销毁时机: 应用关闭" as DBDestroy
+        card "管理方式: 引用计数" as DBManage
+    }
+}
+
+' MemTable对象
+rectangle "内存表对象" as MemTableObjects {
+    rectangle "MemTable" as MemTable {
+        card "创建时机: 写入操作" as MemCreate
+        card "管理方式: Arena批量管理" as MemManage
+    }
+    
+    rectangle "WriteBatch" as WriteBatch {
+        card "创建时机: 批量写入开始" as BatchCreate
+        card "销毁时机: 批量提交完成" as BatchDestroy
+        card "管理方式: 基于范围" as BatchManage
+    }
+}
+
+' 缓存对象
+rectangle "缓存对象" as CacheObjects {
+    rectangle "Block缓存项" as BlockCacheEntry {
+        card "创建时机: 读取数据块" as BlockCreate
+        card "销毁时机: 引用为零或被淘汰" as BlockDestroy
+        card "管理方式: 引用计数+LRU" as BlockManage
+    }
+    
+    rectangle "表缓存项" as TableCacheEntry {
+        card "创建时机: 打开SST文件" as TableCreate
+        card "销毁时机: 引用为零或被淘汰" as TableDestroy
+        card "管理方式: 引用计数+LRU" as TableManage
+    }
+}
+
+' 迭代器对象
+rectangle "迭代器对象" as IteratorObjects {
+    rectangle "DBIterator" as DBIterator {
+        card "创建时机: Get/Seek调用" as DBItCreate
+        card "销毁时机: 查询完成" as DBItDestroy
+        card "管理方式: 基于范围+引用计数" as DBItManage
+    }
+    
+    rectangle "MemTableIterator" as MemIterator {
+        card "创建时机: 扫描MemTable" as MemItCreate
+        card "销毁时机: 扫描完成" as MemItDestroy
+        card "管理方式: Arena管理" as MemItManage
+    }
+    
+    rectangle "MergingIterator" as MergeIterator {
+        card "创建时机: 合并结果集" as MergeItCreate
+        card "销毁时机: 合并完成" as MergeItDestroy
+        card "管理方式: 智能指针" as MergeItManage
+    }
+}
+
+' 资源对象
+rectangle "资源对象" as ResourceObjects {
+    rectangle "文件句柄" as FileHandle {
+        card "创建时机: 文件打开" as FileCreate
+        card "销毁时机: 显式关闭或引用为零" as FileDestroy
+        card "管理方式: 引用计数" as FileManage
+    }
+    
+    rectangle "线程池" as ThreadPool {
+        card "创建时机: DB初始化" as ThreadCreate
+        card "销毁时机: DB关闭" as ThreadDestroy
+        card "管理方式: 单一所有者" as ThreadManage
+    }
+}
+
+' Compaction对象
+rectangle "Compaction对象" as CompactionObjects {
+    rectangle "Compaction任务" as CompactionTask {
+        card "创建时机: 触发合并" as CompCreate
+        card "销毁时机: 合并完成" as CompDestroy
+        card "管理方式: 基于范围" as CompManage
+    }
+    
+    rectangle "Compaction临时对象" as CompactionTemp {
+        card "创建时机: 合并过程中" as CompTempCreate
+        card "销毁时机: 合并步骤完成" as CompTempDestroy
+        card "管理方式: 专用Arena" as CompTempManage
+    }
+}
+
+' 对象生命周期关系
+DBInstance --> MemTable : 创建和管理
+DBInstance --> BlockCacheEntry : 共享访问
+DBInstance --> ThreadPool : 拥有
+
+MemTable --> MemIterator : 创建
+BlockCacheEntry --> DBIterator : 支持
+
+' 时序表示
+rectangle "对象典型生命周期时序" as Lifecycle {
+    card "系统启动" as Start
+    card "DB打开" as Open
+    card "写入操作" as Write
+    card "读取操作" as Read
+    card "Compaction" as Compact
+    card "DB关闭" as Close
+    card "系统停止" as Stop
+    
+    Start -down-> Open
+    Open -down-> Write
+    Write -down-> Read
+    Read -down-> Compact
+    Compact -down-> Close
+    Close -down-> Stop
+}
+
+note right of Lifecycle
+  对象创建/销毁与操作的对应关系:
+  - 系统启动：无RocksDB对象
+  - DB打开：创建DB实例、缓存、线程池等
+  - 写入操作：创建/使用MemTable、WriteBatch
+  - 读取操作：创建迭代器、访问缓存项
+  - Compaction：创建Compaction任务和临时对象
+  - DB关闭：销毁所有持久化对象
+  - 系统停止：确保所有资源释放
+end note
+
+' 关键优化
+note bottom of MemTableObjects
+  MemTable对象优化:
+  - 使用Arena，避免每个节点单独分配/释放
+  - 批量创建和销毁，减少系统调用
+  - 生命周期与刷盘操作绑定，简化管理
+end note
+
+note bottom of IteratorObjects
+  迭代器优化:
+  - 轻量级创建，频繁创建销毁
+  - 复用底层资源，减少内存压力
+  - 基于范围的自动管理，防止泄漏
+end note
+
+note bottom of CacheObjects
+  缓存对象优化:
+  - 引用计数与LRU结合管理
+  - 支持pinning机制，防止活跃对象被淘汰
+  - 分层缓存策略，区分热点和冷数据
+end note
+
+@enduml 

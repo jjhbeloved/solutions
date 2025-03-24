@@ -1,0 +1,91 @@
+@startuml sequential_vs_random_write
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+' 设置样式
+skinparam rectangle {
+    BackgroundColor White
+    BorderColor Black
+    FontStyle Bold
+}
+
+skinparam arrow {
+    Color Black
+    FontStyle Bold
+}
+
+' 定义顺序写入部分
+rectangle "**顺序写入**" as SequentialWrite {
+    rectangle "存储设备" as SeqDevice {
+        rectangle "块1" as S1 #D1F0FF
+        rectangle "块2" as S2 #D1F0FF
+        rectangle "块3" as S3 #D1F0FF
+        rectangle "块4" as S4 #D1F0FF
+        
+        S1 -[hidden]right-> S2
+        S2 -[hidden]right-> S3
+        S3 -[hidden]right-> S4
+    }
+    
+    rectangle "应用程序" as SeqApp #EEEEEE
+    
+    SeqApp -down-> S1 : 写入1
+    SeqApp -down-> S2 : 写入2
+    SeqApp -down-> S3 : 写入3
+    SeqApp -down-> S4 : 写入4
+    
+    note bottom of SeqDevice
+      优势:
+      - 减少寻道/查找时间
+      - 较少的磁头移动
+      - 大批量数据传输
+      - 更高的吞吐量
+    end note
+}
+
+' 定义随机写入部分
+rectangle "**随机写入**" as RandomWrite {
+    rectangle "存储设备" as RandDevice {
+        rectangle "块76" as R1 #FFD1D1
+        rectangle "块234" as R2 #FFD1D1
+        rectangle "块45" as R3 #FFD1D1
+        rectangle "块128" as R4 #FFD1D1
+        
+        R1 -[hidden]right-> R2
+        R2 -[hidden]right-> R3
+        R3 -[hidden]right-> R4
+    }
+    
+    rectangle "应用程序" as RandApp #EEEEEE
+    
+    RandApp -down-> R1 : 写入1
+    RandApp -down-> R3 : 写入2
+    RandApp -down-> R4 : 写入3
+    RandApp -down-> R2 : 写入4
+    
+    note bottom of RandDevice
+      劣势:
+      - 大量寻道/查找时间
+      - 频繁的磁头重定位
+      - 小批量数据传输
+      - 较低的吞吐量
+    end note
+}
+
+' 排版
+SequentialWrite -[hidden]right-> RandomWrite
+
+' 性能对比
+note top of SequentialWrite
+  顺序写入性能特点:
+  - HDD: 50-150MB/s
+  - SSD: 400-1000MB/s
+end note
+
+note top of RandomWrite
+  随机写入性能特点:
+  - HDD: 0.5-2MB/s (降低100倍)
+  - SSD: 50-200MB/s (降低5-10倍)
+end note
+
+@enduml 

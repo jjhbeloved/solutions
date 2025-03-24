@@ -1,0 +1,104 @@
+@startuml RocksDB对象关系与所有权
+
+title RocksDB对象所有权关系图
+
+' 核心对象
+class DBImpl {
+  + 数据库实例
+  + 所有组件的根所有者
+}
+
+class ColumnFamilySet {
+  + 管理所有列族
+}
+
+class ColumnFamilyData {
+  + 单个列族的数据
+}
+
+class MemTable {
+  + 内存表
+  + 负责内存中的数据存储
+}
+
+class Arena {
+  + 内存分配池
+  + 管理MemTable的所有内存分配
+}
+
+class VersionSet {
+  + 管理所有版本和文件
+}
+
+class Version {
+  + 特定时间点的数据库状态
+}
+
+class TableCache {
+  + 缓存表读取器
+}
+
+class TableReader {
+  + SST文件读取器
+}
+
+class BlockBasedTable {
+  + 特定格式的表实现
+}
+
+class BlockCache {
+  + 块缓存
+  + 缓存数据、索引和过滤器块
+}
+
+class Iterator {
+  + 遍历数据的迭代器
+}
+
+class Snapshot {
+  + 数据库状态快照
+}
+
+' 生命周期注释
+note top of Arena : 由MemTable所有，\n随MemTable销毁而释放
+note top of MemTable : 写入->不可变->刷新到磁盘->销毁
+note right of TableReader : 通过引用计数管理生命周期
+note bottom of Iterator : 用户负责创建和销毁
+
+' 对象关系
+DBImpl "1" *-- "1" ColumnFamilySet : 拥有
+DBImpl "1" *-- "1" VersionSet : 拥有
+DBImpl "1" *-- "1" TableCache : 拥有
+DBImpl "1" *-- "1" BlockCache : 拥有
+DBImpl "1" o-- "*" Snapshot : 管理
+
+ColumnFamilySet "1" *-- "*" ColumnFamilyData : 包含
+ColumnFamilyData "1" *-- "*" MemTable : 拥有
+MemTable "1" *-- "1" Arena : 拥有
+
+VersionSet "1" *-- "*" Version : 管理
+Version "1" o-- "*" TableReader : 引用
+
+TableCache "1" o-- "*" TableReader : 缓存
+TableReader <|-- BlockBasedTable : 实现
+
+ColumnFamilyData "1" ..> "*" Iterator : 创建
+BlockBasedTable "1" ..> "*" Iterator : 创建
+
+' 生命周期状态
+enum 生命周期状态 {
+  创建
+  活跃
+  不可变
+  待销毁
+  已销毁
+}
+
+' 生命周期依赖
+MemTable --> 生命周期状态
+Iterator --> 生命周期状态
+TableReader --> 生命周期状态
+Version --> 生命周期状态
+Snapshot --> 生命周期状态
+
+@enduml 

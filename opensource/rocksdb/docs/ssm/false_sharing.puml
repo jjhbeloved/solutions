@@ -1,0 +1,65 @@
+@startuml false_sharing
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+participant "CPU核心1" as CPU1
+participant "CPU核心2" as CPU2
+participant "L1缓存(核心1)" as L1_1
+participant "L1缓存(核心2)" as L1_2
+participant "共享缓存行\n(64字节)" as CacheLine
+participant "主内存" as RAM
+
+note over CacheLine: 包含变量A和变量B的单个缓存行\n(尽管两个变量由不同核心访问)
+
+== 初始状态 ==
+CPU1 -> L1_1: 读取变量A
+activate L1_1
+L1_1 -> CacheLine: 缓存未命中，加载整个缓存行
+activate CacheLine
+CacheLine -> RAM: 从内存加载
+activate RAM
+RAM -> CacheLine: 返回包含A和B的缓存行
+deactivate RAM
+CacheLine -> L1_1: 加载到L1缓存
+deactivate CacheLine
+L1_1 -> CPU1: 返回变量A
+deactivate L1_1
+
+CPU2 -> L1_2: 读取变量B
+activate L1_2
+L1_2 -> CacheLine: 缓存未命中，加载整个缓存行
+activate CacheLine
+CacheLine -> RAM: 从内存加载
+activate RAM
+RAM -> CacheLine: 返回包含A和B的缓存行
+deactivate RAM
+CacheLine -> L1_2: 加载到L1缓存
+deactivate CacheLine
+L1_2 -> CPU2: 返回变量B
+deactivate L1_2
+
+== 伪共享问题发生 ==
+CPU1 -> L1_1: 修改变量A
+activate L1_1
+L1_1 -> CacheLine: 写入更新
+activate CacheLine
+CacheLine -> L1_2: 缓存一致性协议使L1_2中的缓存行失效
+deactivate CacheLine
+deactivate L1_1
+
+CPU2 -> L1_2: 尝试读取变量B
+activate L1_2
+L1_2 -> CacheLine: 缓存行已失效，必须重新加载
+activate CacheLine
+CacheLine -> RAM: 从内存重新加载
+activate RAM
+RAM -> CacheLine: 返回更新后的缓存行
+deactivate RAM
+CacheLine -> L1_2: 加载到L1缓存
+deactivate CacheLine
+L1_2 -> CPU2: 返回变量B
+deactivate L1_2
+
+note right: 虽然CPU2只访问B，\n但因为A的更新导致\n包含B的缓存行失效，\n造成额外的内存访问
+
+@enduml 

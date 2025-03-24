@@ -1,0 +1,15 @@
+@startuml memtable_memory
+skinparam dpi 300
+
+rectangle "MemTable" as MemTable {
+  rectangle "Skiplist" as Skiplist
+  rectangle "Arena" as Arena
+}
+
+note right of Skiplist : 跳表数据结构
+note right of Arena : 内存分配池
+
+MemTable --> Skiplist
+MemTable --> Arena
+
+@enduml 

@@ -1,0 +1,207 @@
+@startuml block_cache_optimization
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+' 颜色定义
+!define CACHE_COLOR #E8EAF6
+!define SHARD_COLOR #C5CAE9
+!define META_COLOR #9FA8DA
+!define DATA_COLOR #7986CB
+!define INDEX_COLOR #5C6BC0
+!define FILTER_COLOR #3F51B5
+!define HIT_COLOR #A5D6A7
+!define MISS_COLOR #EF9A9A
+
+' 标题
+title RocksDB Block Cache优化
+
+' Block Cache架构
+package "Block Cache架构" as BlockCacheArch {
+    rectangle "LRU缓存" as LRUCache #CACHE_COLOR {
+        rectangle "分片1" as Shard1 #SHARD_COLOR
+        rectangle "分片2" as Shard2 #SHARD_COLOR
+        rectangle "分片3" as Shard3 #SHARD_COLOR
+        rectangle "..." as ShardDots #SHARD_COLOR
+        rectangle "分片N" as ShardN #SHARD_COLOR
+        
+        Shard1 -[hidden]right-> Shard2
+        Shard2 -[hidden]right-> Shard3
+        Shard3 -[hidden]right-> ShardDots
+        ShardDots -[hidden]right-> ShardN
+    }
+    
+    rectangle "缓存内容分类" as CacheContent {
+        rectangle "数据块" as DataBlocks #DATA_COLOR
+        rectangle "索引块" as IndexBlocks #INDEX_COLOR
+        rectangle "过滤器块" as FilterBlocks #FILTER_COLOR
+        rectangle "元数据块" as MetaBlocks #META_COLOR
+        
+        DataBlocks -[hidden]right-> IndexBlocks
+        IndexBlocks -[hidden]right-> FilterBlocks
+        FilterBlocks -[hidden]right-> MetaBlocks
+    }
+    
+    note right of CacheContent
+      缓存优先级:
+      1. 过滤器块 (最高优先级)
+      2. 索引块 (高优先级)
+      3. 数据块 (标准优先级)
+      4. 元数据块 (按需缓存)
+    end note
+}
+
+' 分片设计
+rectangle "分片设计优化" as ShardDesign {
+    rectangle "分片结构" as ShardStructure #SHARD_COLOR {
+        rectangle "哈希表" as HashMap #SHARD_COLOR
+        rectangle "LRU链表" as LRUList #SHARD_COLOR
+        rectangle "互斥锁" as Mutex #SHARD_COLOR
+    }
+    
+    note right of ShardStructure
+      分片优势:
+      - 减少锁竞争
+      - 提高并发访问性能
+      - 更好的内存局部性
+      - 减少缓存一致性流量
+    end note
+    
+    card "最佳分片数量公式:" as ShardFormula
+    card "分片数 = min(CPU核心数 * 4, 缓存大小/8MB)" as ShardFormulaDetail
+}
+
+' 缓存命中流程
+rectangle "缓存访问流程" as CacheAccess {
+    actor "读取请求" as ReadRequest
+    participant "Block Cache" as Cache
+    participant "分片" as Shard
+    participant "哈希表" as Hash
+    participant "LRU链表" as LRU
+    participant "磁盘存储" as Disk
+    
+    group 缓存命中场景
+        ReadRequest -> Cache : 请求数据块
+        activate Cache
+        
+        Cache -> Hash : 计算目标分片
+        activate Hash
+        
+        Hash -> Shard : 定位到分片
+        activate Shard
+        
+        Shard -> Shard : 加锁
+        
+        Shard -> Hash : 查找数据块
+        Hash -> Shard : 找到数据块
+        
+        Shard -> LRU : 更新位置到MRU端
+        activate LRU
+        LRU -> Shard : 更新完成
+        deactivate LRU
+        
+        Shard -> Shard : 解锁
+        
+        Shard -> Cache : 返回数据块
+        deactivate Shard
+        deactivate Hash
+        
+        Cache -> ReadRequest : 返回数据
+        deactivate Cache
+        
+        note right #HIT_COLOR: 缓存命中，快速返回
+    end
+    
+    group 缓存未命中场景
+        ReadRequest -> Cache : 请求数据块
+        activate Cache
+        
+        Cache -> Hash : 计算目标分片
+        activate Hash
+        
+        Hash -> Shard : 定位到分片
+        activate Shard
+        
+        Shard -> Shard : 加锁
+        
+        Shard -> Hash : 查找数据块
+        Hash -> Shard : 未找到数据块
+        
+        Shard -> Shard : 解锁
+        
+        Shard -> Cache : 返回未命中
+        deactivate Shard
+        deactivate Hash
+        
+        Cache -> Disk : 从磁盘读取
+        activate Disk
+        Disk -> Cache : 返回数据块
+        deactivate Disk
+        
+        Cache -> Shard : 插入新数据块
+        activate Shard
+        
+        Shard -> Shard : 加锁
+        
+        Shard -> LRU : 检查容量
+        activate LRU
+        
+        alt 需要驱逐
+            LRU -> LRU : 驱逐LRU端数据块
+        end
+        
+        LRU -> Hash : 插入新数据块
+        LRU -> Shard : 插入完成
+        deactivate LRU
+        
+        Shard -> Shard : 解锁
+        
+        Shard -> Cache : 确认插入
+        deactivate Shard
+        
+        Cache -> ReadRequest : 返回数据
+        deactivate Cache
+        
+        note right #MISS_COLOR: 缓存未命中，额外磁盘IO
+    end
+}
+
+' 高级优化技术
+rectangle "高级优化技术" as AdvancedOpt {
+    card "压缩数据缓存" as CompressedCache
+    card "- 某些场景下直接缓存压缩数据" as CompressedCache1
+    card "- 节省内存空间" as CompressedCache2
+    card "- 权衡CPU解压缩成本" as CompressedCache3
+    
+    card "" as Empty1
+    
+    card "高效哈希计算" as EfficientHash
+    card "- 使用硬件加速的哈希函数" as EfficientHash1
+    card "- 减少哈希冲突" as EfficientHash2
+    card "- 双哈希设计减少冲突" as EfficientHash3
+    
+    card "" as Empty2
+    
+    card "缓存预热与钉住" as CacheWarmPinning
+    card "- 关键数据预加载" as CacheWarmPinning1
+    card "- 关键块钉住不被驱逐" as CacheWarmPinning2
+    card "- 智能选择需要钉住的块" as CacheWarmPinning3
+}
+
+' 性能指标
+rectangle "性能提升" as PerfImprovement {
+    card "<b>读取延迟</b>: 缓存命中时降低99%" as ReadLatency
+    card "<b>读取吞吐量</b>: 提升3-10倍(取决于命中率)" as ReadThroughput
+    card "<b>并发性能</b>: 分片设计提升2-5倍" as Concurrency
+    card "<b>内存效率</b>: 更精细的缓存控制和驱逐策略" as MemEfficiency
+}
+
+note bottom of BlockCacheArch
+  Block Cache是RocksDB读性能的关键，优化原则:
+  1. <b>分片设计</b>: 减少锁竞争，提高并发访问性能
+  2. <b>优先级缓存</b>: 索引和过滤器优先保留在缓存中
+  3. <b>局部性优化</b>: 相关数据块存储在相邻位置
+  4. <b>自适应管理</b>: 根据访问模式动态调整缓存策略
+  5. <b>内存控制</b>: 精确控制内存使用，避免OOM风险
+end note
+
+@enduml 

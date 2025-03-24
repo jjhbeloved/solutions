@@ -1,0 +1,21 @@
+@startuml arena_memory
+skinparam dpi 300
+
+rectangle "Arena内存池" as Arena {
+  rectangle "Block 1 (8KB)" as Block1 {
+    rectangle "已分配对象" as A1
+  }
+  
+  rectangle "Block 2 (16KB)" as Block2 {
+    rectangle "已分配对象" as A2
+  }
+  
+  rectangle "Block 3 (32KB)" as Block3 {
+    rectangle "当前分配位置" as A3
+  }
+}
+
+Block1 -[hidden]-> Block2
+Block2 -[hidden]-> Block3
+
+@enduml 

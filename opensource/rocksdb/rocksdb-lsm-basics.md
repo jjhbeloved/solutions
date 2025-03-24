@@ -54,7 +54,7 @@ LSM树(Log-Structured Merge-Tree)是一种为写入密集型工作负载设计�
 
 在RocksDB中，LSM树是其架构的核心基础，它使RocksDB能够在保持较高读取性能的同时，提供极高的写入吞吐量，特别适合闪存存储设备。
 
-![LSM树基本结构](docs/lsm/lsm-tree-structure.puml)
+[LSM树基本结构](docs/lsm/lsm-tree-structure.puml)
 
 ### 1.2 为什么需要LSM树
 
@@ -87,7 +87,7 @@ LSM树的基本工作流程可以概括为：
 
 ### 2.2 读写操作流程
 
-![LSM树读写操作流程](docs/lsm/lsm-read-write-flow.puml)
+[LSM树读写操作流程](docs/lsm/lsm-read-write-flow.puml)
 
 #### 写入流程
 1. 写请求到达时，先写入WAL(Write-Ahead Log)以确保持久性
@@ -121,7 +121,7 @@ RocksDB中的MemTable默认使用跳表(SkipList)数据结构实现，具有以�
 - 支持范围查询
 - 并发访问友好
 
-![MemTable的跳表实现](docs/lsm/skiplist-memtable.puml)
+[MemTable的跳表实现](docs/lsm/skiplist-memtable.puml)
 
 除了默认的跳表实现，RocksDB还支持其它MemTable实现：
 - HashSkipList：结合哈希表和跳表的实现
@@ -152,7 +152,7 @@ RocksDB使用Block-Based Table格式，一个SST文件包含：
 - **属性块(Properties)**：存储文件级别的统计信息
 - **页脚(Footer)**：包含文件元信息和校验码
 
-![SSTable文件格式](docs/lsm/sstable-format.puml)
+[SSTable文件格式](docs/lsm/sstable-format.puml)
 
 #### 数据在SSTable中的组织方式
 - 键值对按照键的顺序排列
@@ -207,7 +207,7 @@ RocksDB采用分层存储模型，从L0到Ln：
 - 重新组织数据，提高读效率
 - 控制文件数量和总大小
 
-![压缩过程示意图](docs/lsm/compaction-process.puml)
+[压缩过程示意图](docs/lsm/compaction-process.puml)
 
 #### 压缩触发条件
 压缩过程可能由以下条件触发：
@@ -262,7 +262,7 @@ RocksDB通过以下因素决定压缩优先级：
 
 LSM树设计中需要平衡三种放大因子：
 
-![LSM树的三种放大因子](docs/lsm/amplification-factors.puml)
+[LSM树的三种放大因子](docs/lsm/amplification-factors.puml)
 
 1. **写入放大(Write Amplification Factor, WAF)**
    - 定义：实际写入存储设备的数据量与用户写入数据量的比值

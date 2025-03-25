@@ -1,0 +1,50 @@
+@startuml block_cache_read_flow
+title RocksDB 键查找流程
+
+skinparam ActivityBackgroundColor LightGrey
+skinparam ActivityBorderColor Black
+skinparam ArrowColor Black
+skinparam ConditionBackgroundColor LightSkyBlue
+
+start
+:开始查找键K;
+
+:检查活跃MemTable;
+if (在活跃MemTable中找到K?) then (是)
+  :返回找到的值;
+  stop
+else (否)
+endif
+
+:检查所有不可变MemTable;
+if (在不可变MemTable中找到K?) then (是)
+  :返回找到的值;
+  stop
+else (否)
+endif
+
+:使用bloom过滤器快速筛选\n可能包含K的SST文件;
+
+if (Block Cache包含目标\nSST文件的索引块?) then (是)
+  :使用缓存的索引块;
+else (否)
+  :从磁盘加载索引块并缓存;
+endif
+
+:根据索引定位到包含K的数据块;
+
+if (Block Cache包含目标数据块?) then (是)
+  :直接从缓存读取;
+else (否)
+  :从磁盘读取数据块并放入缓存;
+endif
+
+if (在数据块中找到K?) then (是)
+  :返回K的值;
+  stop
+else (否)
+  :返回未找到;
+  stop
+endif
+
+@enduml 

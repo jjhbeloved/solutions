@@ -1,0 +1,66 @@
+@startuml
+skinparam backgroundColor white
+skinparam handwritten false
+skinparam defaultFontName Microsoft YaHei
+
+title SSTable与Block Cache协同优化机制
+
+' 定义参与者
+participant Application as app
+participant MemTable as mem
+participant "Block Cache" as cache
+participant SSTable as sst
+database "磁盘" as Disk
+
+' 定义箭头样式
+skinparam responseMessageBelowArrow true
+
+note over app, sst
+  写入过程：数据先写入MemTable，达到阈值后刷写到SSTable
+end note
+
+== 写入过程 ==
+app -> mem: 写入数据
+activate mem
+mem -> mem: 数据累积
+mem -> sst: 达到阈值后刷写
+deactivate mem
+note right of sst: SSTable按块组织数据\n每块16KB左右
+
+== 首次读取过程 ==
+app -> mem: 查询数据
+activate mem
+mem --> app: 未命中
+deactivate mem
+
+app -> cache: 查询数据块
+activate cache
+cache --> app: 未命中
+deactivate cache
+
+app -> sst: 读取数据块
+activate sst
+sst -> cache: 缓存数据块
+sst --> app: 返回数据
+deactivate sst
+
+== 重复读取过程 ==
+app -> mem: 查询数据
+activate mem
+mem --> app: 未命中
+deactivate mem
+
+app -> cache: 查询数据块
+activate cache
+cache --> app: 命中，直接返回
+deactivate cache
+
+note over cache
+  Block Cache优势：
+  1. 保持块格式，无需转换
+  2. 块内数据共享内存空间
+  3. 支持多种块类型
+  4. 细粒度淘汰策略
+end note
+
+@enduml 

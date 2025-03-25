@@ -152,7 +152,6 @@ RocksDB将内存限制划分为多个层级，这种设计有着深思熟虑的�
 
 #### RocksDB内存层级结构图
 
-**RocksDB内存层级UML图**:
 - [查看内存层级UML图](docs/memory/memory_hierarchy.puml)
 
 #### 层级间交互关系

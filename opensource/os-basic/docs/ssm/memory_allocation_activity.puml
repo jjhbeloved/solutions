@@ -1,0 +1,28 @@
+@startuml allocation_activity
+start
+:请求分配内存;
+
+if (内存大小?) then (小对象\n≤256B)
+    :根据大小找到对应的小对象池;
+    if (有空闲块?) then (是)
+        :从空闲列表获取已有块;
+    else (否)
+        :从当前块分配;
+        if (当前块空间不足?) then (是)
+            :请求新内存块;
+        endif
+    endif
+elseif (内存大小?) then (中等对象\n≤8KB)
+    :使用页面分配器;
+    if (有合适页面?) then (是)
+        :从现有页面分配;
+    else (否)
+        :分配新页面;
+    endif
+else (大对象\n>8KB)
+    :直接向系统请求内存;
+endif
+
+:返回内存指针;
+stop
+@enduml

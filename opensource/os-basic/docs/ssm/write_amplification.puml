@@ -1,0 +1,65 @@
+@startuml write_amplification
+skinparam dpi 200
+skinparam defaultFontName "Microsoft YaHei"
+
+' 简化图表样式
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultTextAlignment center
+
+' 定义参与者
+actor "应用程序" as App
+participant "存储引擎" as Engine
+participant "数据结构" as InternalDS
+collections "磁盘" as Disk
+
+title 写放大问题图解
+
+note over App, Disk
+  **写放大**: 实际写入的数据量远大于应用程序请求写入的数据量
+end note
+
+' 简化图示序列
+== 应用程序写入 (4KB数据) ==
+App -> Engine : 写入4KB数据
+Engine -> InternalDS : 更新内存结构
+InternalDS -> Disk : 写入WAL日志 (4KB)
+InternalDS <-- Disk
+note right of Disk : 写入1: 4KB(WAL)
+
+App <-- Engine : 写入成功
+
+== 合并和压缩 ==
+Engine -> Disk : 读取现有数据 (100KB)
+Engine <-- Disk
+note right : 读取: 100KB
+
+Engine -> Disk : 写入新的SST文件 (104KB)
+Engine <-- Disk
+note right of Disk : 写入2: 104KB(SST)
+
+Engine -> Disk : 更新元数据 (1KB)
+Engine <-- Disk
+note right of Disk : 写入3: 1KB(元数据)
+
+== SSD垃圾回收 ==
+Disk -> Disk : 重组和擦除块 (200KB)
+note right of Disk : 写入4: 200KB(GC)
+
+== 优化策略 ==
+note right
+  **写放大优化方法**:
+  - 增量更新
+  - 数据分区
+  - 压缩算法
+  - 批量写入
+end note
+
+' 写放大统计
+note bottom
+  应用程序写入: 4KB
+  实际磁盘写入: 4KB(WAL) + 104KB(SST) + 1KB(元数据) + 200KB(GC) = 309KB
+  **写放大因子**: 309KB ÷ 4KB = 77.25倍
+end note
+
+@enduml 

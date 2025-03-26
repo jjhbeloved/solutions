@@ -1,66 +1,77 @@
-@startuml
-skinparam backgroundColor white
-skinparam handwritten false
-skinparam defaultFontName Microsoft YaHei
+@startuml block_cache_optimization
 
-title SSTable与Block Cache协同优化机制
+' 使用更直观的组件图语法
+!pragma layout smetana
+skinparam componentStyle rectangle
 
-' 定义参与者
-participant Application as app
-participant MemTable as mem
-participant "Block Cache" as cache
-participant SSTable as sst
-database "磁盘" as Disk
+title RocksDB Block Cache优化示意图
 
-' 定义箭头样式
-skinparam responseMessageBelowArrow true
+' 主体结构
+rectangle "应用程序请求" as AppRequest
 
-note over app, sst
-  写入过程：数据先写入MemTable，达到阈值后刷写到SSTable
-end note
+' 缓存结构
+component "Block Cache" as BlockCache {
+  component "分片机制" as Sharding {
+    component "分片1" as Shard1
+    component "分片2" as Shard2
+    component "分片N" as ShardN
+  }
+  
+  component "缓存内容" as Content {
+    component "过滤器块" as Filter
+    component "索引块" as Index  
+    component "数据块" as Data
+    component "元数据块" as Meta
+  }
+}
 
-== 写入过程 ==
-app -> mem: 写入数据
-activate mem
-mem -> mem: 数据累积
-mem -> sst: 达到阈值后刷写
-deactivate mem
-note right of sst: SSTable按块组织数据\n每块16KB左右
+database "磁盘存储" as Disk
 
-== 首次读取过程 ==
-app -> mem: 查询数据
-activate mem
-mem --> app: 未命中
-deactivate mem
+' 缓存命中流程
+component "缓存操作" as CacheOps {
+  component "缓存命中流程" as HitFlow {
+    [请求数据] --> [查找分片]
+    [查找分片] --> [查找数据块]
+    [查找数据块] --> [返回数据]
+  }
+  
+  component "缓存未命中流程" as MissFlow {
+    [请求数据] -right-> [查找失败]
+    [查找失败] -right-> [从磁盘读取]
+    [从磁盘读取] -right-> [更新缓存]
+    [更新缓存] -right-> [返回数据]
+  }
+}
 
-app -> cache: 查询数据块
-activate cache
-cache --> app: 未命中
-deactivate cache
+' 优化策略
+card "主要优化策略" as Strategies {
+  card "分片设计" as Strategy1
+  card "优先级缓存" as Strategy2
+  card "内存布局优化" as Strategy3
+  card "缓存替换策略" as Strategy4
+}
 
-app -> sst: 读取数据块
-activate sst
-sst -> cache: 缓存数据块
-sst --> app: 返回数据
-deactivate sst
+' 性能提升
+card "性能提升" as Performance {
+  card "读取延迟降低" as Perf1
+  card "读取吞吐量提升" as Perf2
+  card "内存使用效率提高" as Perf3
+}
 
-== 重复读取过程 ==
-app -> mem: 查询数据
-activate mem
-mem --> app: 未命中
-deactivate mem
+' 关系
+AppRequest -down-> BlockCache
+BlockCache -down-> Disk : 缓存未命中
+BlockCache -right-> CacheOps : 处理流程
+Strategies -up-> BlockCache : 优化
+Performance -up-> BlockCache : 结果
 
-app -> cache: 查询数据块
-activate cache
-cache --> app: 命中，直接返回
-deactivate cache
+' 优先级和内部关系
+Filter -[hidden]right-> Index
+Index -[hidden]right-> Data
+Data -[hidden]right-> Meta
 
-note over cache
-  Block Cache优势：
-  1. 保持块格式，无需转换
-  2. 块内数据共享内存空间
-  3. 支持多种块类型
-  4. 细粒度淘汰策略
-end note
+Filter ..> Index : 优先级高于
+Index ..> Data : 优先级高于
+Data ..> Meta : 优先级高于
 
-@enduml 
+@enduml

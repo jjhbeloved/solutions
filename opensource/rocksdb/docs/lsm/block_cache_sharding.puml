@@ -1,0 +1,68 @@
+@startuml block_cache_sharding
+
+title RocksDB Block Cache分片设计
+
+package "Block Cache总体结构" as BlockCache {
+  rectangle "分片管理器" as ShardManager
+  
+  rectangle "分片1" as Shard1 {
+    rectangle "哈希表" as HashMap1
+    rectangle "LRU链表" as LRUList1
+    rectangle "互斥锁" as Mutex1
+  }
+  
+  rectangle "分片2" as Shard2 {
+    rectangle "哈希表" as HashMap2
+    rectangle "LRU链表" as LRUList2
+    rectangle "互斥锁" as Mutex2
+  }
+  
+  rectangle "..." as ShardDots
+  
+  rectangle "分片N" as ShardN {
+    rectangle "哈希表" as HashMapN
+    rectangle "LRU链表" as LRUListN
+    rectangle "互斥锁" as MutexN
+  }
+  
+  ShardManager --> Shard1
+  ShardManager --> Shard2
+  ShardManager --> ShardDots
+  ShardManager --> ShardN
+}
+
+rectangle "缓存内容类型" as CacheContent {
+  rectangle "数据块" as DataBlocks
+  rectangle "索引块" as IndexBlocks
+  rectangle "过滤器块" as FilterBlocks
+  rectangle "元数据块" as MetaBlocks
+}
+
+node "查找流程" as LookupFlow {
+  rectangle "计算键哈希值" as Hash
+  rectangle "定位目标分片" as LocateShard
+  rectangle "分片内查找" as LookupInShard
+  rectangle "更新LRU位置" as UpdateLRU
+  
+  Hash --> LocateShard
+  LocateShard --> LookupInShard
+  LookupInShard --> UpdateLRU
+}
+
+note right of BlockCache
+  分片设计的主要目的:
+  1. 减少锁竞争，提高并发性能
+  2. 提高缓存命中率
+  3. 更好的内存局部性
+  4. 减少缓存一致性流量
+end note
+
+note bottom of LookupFlow
+  最佳分片数量公式:
+  分片数 = min(CPU核心数 * 4, 缓存大小/8MB)
+  
+  例如: 16核CPU、4GB缓存
+  分片数 = min(16*4, 4096MB/8MB) = min(64, 512) = 64
+end note
+
+@enduml 

@@ -1,0 +1,104 @@
+@startuml 文件块定位原理
+
+skinparam backgroundColor white
+skinparam handwritten false
+skinparam defaultFontName Microsoft YaHei
+
+title 文件块定位原理：如何确定数据在文件中的位置？
+
+' 原始文件与分块
+rectangle "原始文件 (1GB)" as file {
+  rectangle "块0\n(0-4MB)" as block0 #lightblue
+  rectangle "块1\n(4-8MB)" as block1 #lightblue
+  rectangle "..." as more
+  rectangle "块100\n(400-404MB)" as block100 #pink
+  rectangle "块101\n(404-408MB)" as block101 #lightblue
+  rectangle "..." as more2
+  rectangle "块255\n(1020-1024MB)" as block255 #lightblue
+}
+
+note bottom of block100 #pink
+  目标位置：403.9MB处的数据
+end note
+
+cloud "用户/应用程序\n定位方式" as locator {
+  card "文件系统API\nfseek(file, 403.9MB)" as api
+  card "上层应用索引\nrecordIndex→403.9MB" as app_index
+  card "文件内部结构\n某数据结构中偏移" as file_struct
+}
+
+note right of locator
+  问题1：如何确定数据在文件中的位置？
+  
+  1. 文件系统API提供：
+     - pwrite/pread 系统调用直接支持偏移
+     - fseek/ftell 定位文件特定位置
+
+  2. 应用层索引结构：
+     - 数据库索引：record_id → offset
+     - 自定义索引结构：哈希表、B树等
+  
+  3. 文件格式解析：
+     - 解析结构化文件（如JSON、XML）
+     - 文件头部元数据提供内部结构信息
+end note
+
+' 元数据存储
+database "元数据存储" as metadata {
+  card "文件元数据" as filemeta {
+    card "文件名: example.dat" as filename
+    card "总大小: 1GB" as filesize
+    card "块大小: 4MB" as blocksize
+    card "块数量: 256" as blockcount
+    card "块索引表" as blocktable {
+      card "索引0 → 块0哈希" as idx0
+      card "..." as idxmore
+      card "索引100 → 块100哈希" as idx100
+      card "..." as idxmore2
+    }
+  }
+}
+
+' 块定位计算
+actor "应用程序" as app
+
+locator -down-> app
+
+app -right-> filemeta: 1. 查询元数据
+filemeta -right-> app: 返回元数据信息
+
+note bottom of app
+  2. 计算目标块位置:
+  
+  目标位置: 403.9MB
+  块大小: 4MB
+  
+  块索引 = 目标位置 ÷ 块大小
+        = 403.9MB ÷ 4MB 
+        = 100.975
+        = 块100
+  
+  块内偏移 = 目标位置 % 块大小
+          = 403.9MB % 4MB
+          = 3.9MB
+end note
+
+app -down-> metadata: 3. 查询块100的哈希值
+metadata -up-> app: 返回块100哈希
+
+database "块存储" as blockstorage {
+  card "块100哈希 -> 内容" as blockdata100
+}
+
+app -right-> blockstorage: 4. 根据哈希获取块100数据
+blockstorage -left-> app: 返回块100内容
+
+note right of app
+  5. 在块内定位数据:
+  - 从块起始位置偏移3.9MB
+  - 开始读取/写入所需数据
+  - 无需读取整个文件
+  - 只操作目标块中的目标位置
+end note
+
+@enduml 

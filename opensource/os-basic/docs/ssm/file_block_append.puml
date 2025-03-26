@@ -1,0 +1,125 @@
+@startuml 文件块追加原理
+
+skinparam backgroundColor white
+skinparam handwritten false
+skinparam defaultFontName Microsoft YaHei
+
+title 文件块追加原理：新增内容（追加）超过1个块时如何处理？
+
+' 追加场景：文件末尾追加内容
+rectangle "原始文件 (1GB)" as orig_file {
+  rectangle "块0\n(0-4MB)" as block0 #lightblue
+  rectangle "..." as orig_more1
+  rectangle "块253\n(1012-1016MB)" as block253 #lightblue
+  rectangle "块254\n(1016-1020MB)" as block254 #lightblue
+  rectangle "块255\n(1020-1024MB, 只用了2MB)" as block255 #pink
+}
+
+note bottom of block255 #pink
+  末尾块未填满：
+  - 总容量：4MB
+  - 已使用：2MB
+  - 剩余空间：2MB
+end note
+
+' 追加数据
+rectangle "要追加的新内容 (10MB)" as new_content #lightgreen
+
+note left of new_content
+  追加操作场景：
+  - 向文件末尾追加10MB新内容
+  - 追加内容大于一个块的大小(4MB)
+  - 末尾块还有剩余空间(2MB)
+end note
+
+' 元数据
+database "原始元数据" as orig_metadata {
+  card "文件元数据" as orig_filemeta {
+    card "文件名: example.dat" as orig_filename
+    card "总大小: 1GB" as orig_filesize
+    card "块大小: 4MB" as orig_blocksize
+    card "块数量: 256" as orig_blockcount
+    card "块索引表" as orig_blocktable {
+      card "索引0 → 块0哈希" as orig_idx0
+      card "..." as orig_idxmore
+      card "索引254 → 块254哈希" as orig_idx254
+      card "索引255 → 块255哈希" as orig_idx255
+    }
+  }
+}
+
+' 追加过程
+actor "应用程序" as app
+
+app -down-> orig_metadata: 1. 查询原始元数据
+orig_metadata -up-> app: 返回文件元数据
+
+note left of app
+  2. 处理末尾块：
+  - 检查块255还有2MB剩余空间
+  - 读取块255原有内容(2MB)
+  - 将新内容的前2MB追加到块255
+  - 计算更新后块255的新哈希值
+end note
+
+note right of app
+  3. 处理剩余内容：
+  - 新内容总计10MB
+  - 已使用2MB填充块255
+  - 剩余8MB需放入新块
+  - 块256：完整4MB
+  - 块257：剩余4MB
+end note
+
+' 更新后文件
+rectangle "追加后文件 (1034MB)" as appended_file {
+  rectangle "块0\n(不变)" as app_block0 #lightblue
+  rectangle "..." as app_more
+  rectangle "块254\n(不变)" as app_block254 #lightblue
+  rectangle "块255\n(填满剩余2MB)" as app_block255 #lightgreen
+  rectangle "块256\n(新增, 完整4MB)" as app_block256 #lightgreen
+  rectangle "块257\n(新增, 完整4MB)" as app_block257 #lightgreen
+}
+
+' 更新后元数据
+database "更新后元数据" as updated_metadata {
+  card "文件元数据" as updated_filemeta {
+    card "文件名: example.dat" as updated_filename
+    card "总大小: 1034MB" as updated_filesize
+    card "块大小: 4MB" as updated_blocksize
+    card "块数量: 258" as updated_blockcount
+    card "块索引表" as updated_blocktable {
+      card "索引0 → 块0哈希 (不变)" as updated_idx0
+      card "..." as updated_idxmore
+      card "索引254 → 块254哈希 (不变)" as updated_idx254
+      card "索引255 → 块255新哈希 (更新)" as updated_idx255
+      card "索引256 → 块256哈希 (新增)" as updated_idx256
+      card "索引257 → 块257哈希 (新增)" as updated_idx257
+    }
+  }
+}
+
+app -right-> appended_file: 4. 创建新的文件结构
+
+app -down-> updated_metadata: 5. 更新元数据
+
+note bottom of updated_metadata
+  问题3：追加操作的关键特性
+  
+  1. 不改变已有块的位置和顺序:
+     - 原有块0-254保持不变
+     - 只修改末尾块255（如有剩余空间）
+     - 其他已有块完全不变
+  
+  2. 索引表只在末尾扩展:
+     - 仅添加新块的引用
+     - 不调整已有块的位置和顺序
+     - 比中间插入操作简单高效
+  
+  3. 高效性:
+     - 不需要读取和移动大量数据
+     - 操作主要集中在文件末尾
+     - 顺序写入性能高
+end note
+
+@enduml 

@@ -1,0 +1,129 @@
+@startuml block_page_hierarchy
+title 不同层次中的块和页概念及其关系
+
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+skinparam backgroundColor white
+skinparam ArrowColor #4169E1
+skinparam rectangleBorderColor #778899
+skinparam noteBorderColor #A0522D
+
+' 定义不同层次
+package "CPU层" as CPULayer {
+  rectangle "CPU寄存器\n(几个字节)" as Register #F0F8FF
+  
+  package "CPU缓存" as CPUCache {
+    rectangle "L1缓存行\n(64字节)" as L1CacheLine #E6E6FA
+    rectangle "L2缓存行\n(64字节)" as L2CacheLine #E6E6FA
+    rectangle "L3缓存行\n(64字节)" as L3CacheLine #D8BFD8
+    
+    note right of L1CacheLine
+      缓存行(Cache Line)是CPU缓存的基本单位
+      处理器以此为单位在内存和缓存间传输数据
+    end note
+  }
+}
+
+package "内存层" as MemoryLayer {
+  rectangle "内存页\n(4KB标准页)" as MemoryPage #F0FFF0
+  rectangle "大内存页\n(2MB/1GB)" as HugePage #D0F0C0
+  
+  package "内存块与分配" as MemoryAlloc {
+    rectangle "页池\n(内存分配器管理的多个页面)" as PagePool #E0FFFF
+    
+    package "内存分配单元" as MemAllocUnits {
+      rectangle "小对象槽\n(<256字节)" as SmallObjSlot #E0FFFF
+      rectangle "中等对象\n(256字节-4KB)" as MediumObj #E0FFFF
+      rectangle "大对象\n(>4KB)" as LargeObj #B0E0E6
+    }
+  }
+  
+  note right of MemoryPage
+    内存页(Memory Page)是操作系统内存管理的基本单位
+    也是虚拟内存系统中的最小映射单位
+  end note
+}
+
+package "存储层" as StorageLayer {
+  rectangle "磁盘扇区\n(512字节或4KB)" as DiskSector #FFEFD5
+  
+  package "存储系统块" as StorageBlocks {
+    rectangle "文件系统块\n(通常4KB-64KB)" as FSBlock #FFE4B5
+    rectangle "数据库页\n(通常8KB-16KB)" as DBPage #FFE4B5
+    rectangle "存储引擎块\n(可变大小)" as StorageBlock #F5DEB3
+  }
+  
+  note right of FSBlock
+    存储块(Storage Block)是存储系统操作的基本单位
+    也是I/O操作和文件系统管理的基本单位
+  end note
+}
+
+' 定义层次间的关系
+Register -down-> L1CacheLine : 加载/存储
+L1CacheLine -down-> L2CacheLine : 未命中时
+L2CacheLine -down-> L3CacheLine : 未命中时
+L3CacheLine -down-> MemoryPage : 缓存未命中\n按行加载
+
+MemoryPage -down-> PagePool : 由分配器管理
+PagePool -down-> SmallObjSlot : 细分为多个
+PagePool -down-> MediumObj : 部分分配
+PagePool -down-> LargeObj : 整页或多页
+
+MemoryPage -down-> FSBlock : 页缓存映射
+MemoryPage -down-> DBPage : 缓冲池映射
+FSBlock -down-> DiskSector : 映射到多个
+DBPage -down-> DiskSector : 映射到多个
+StorageBlock -down-> DiskSector : 最终映射
+
+' 不同概念间的对应关系
+L1CacheLine -[#FF0000,dashed]-> MemoryPage : 多个缓存行\n对应一个内存页
+MemoryPage -[#FF0000,dashed]-> FSBlock : 内存页可能映射\n一个或多个块
+
+' 添加详细说明
+note as CPUNote
+  <b>CPU缓存层</b>
+  - 缓存行(Cache Line): 处理器缓存的基本单位，通常为64字节
+  - CPU以缓存行为单位读取内存数据
+  - 一个内存页对应多个缓存行(如64个)
+end note
+
+note as MemNote
+  <b>内存层</b>
+  - 内存页(Memory Page): 操作系统内存管理的基本单位，通常为4KB
+  - 页池(Page Pool): 内存分配器管理的多个物理页面
+  - 小对象槽(Object Slot): 将页进一步细分的小内存单元
+  - 与存储系统的"块"不同，这里是内存分配概念
+end note
+
+note as StorageNote
+  <b>存储层</b>
+  - 存储块(Storage Block): 文件系统或数据库的基本操作单位
+  - 磁盘扇区(Disk Sector): 物理存储设备的最小单位
+  - 数据库页(DB Page): 数据库系统中的基本单位
+  - 这里的"块"与内存分配的"块"是不同的概念
+end note
+
+CPUNote -[hidden]-> MemNote
+MemNote -[hidden]-> StorageNote
+
+' 关键概念解释
+legend right
+  <b>核心概念对比:</b>
+  
+  1. <b>块</b>的不同含义:
+     - 存储系统块: 文件系统/数据库的数据单位(KB~MB级别)
+     - 内存分配块: 内存分配器管理的内存区域
+     - 缓存块: 有时作为缓存行的同义词
+  
+  2. <b>页</b>的不同含义:
+     - 内存页: 操作系统虚拟内存系统的基本单位(通常4KB)
+     - 数据库页: 数据库存储的基本单位(通常8KB~16KB)
+     - 交换页: 虚拟内存系统中换入/换出的单位
+  
+  <b>层次之间的转换单位不同:</b>
+  CPU<->内存: 以缓存行(64字节)为单位
+  内存<->磁盘: 以页(4KB)或块(可变大小)为单位
+end legend
+
+@enduml 

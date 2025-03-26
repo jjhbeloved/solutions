@@ -1,0 +1,38 @@
+@startuml memory_hierarchy_overview
+
+' 简化样式设置
+skinparam defaultTextAlignment center
+skinparam dpi 100
+skinparam defaultFontName Arial
+
+' 定义矩形
+rectangle "CPU寄存器" as Register #LightPink
+rectangle "L1缓存(32-64KB)" as L1 #LightSalmon 
+rectangle "L2缓存(256KB-1MB)" as L2 #LightYellow 
+rectangle "L3缓存(数MB)" as L3 #LightGreen 
+rectangle "主内存(RAM)" as RAM #LightBlue 
+rectangle "固态硬盘(SSD)" as SSD #LightCyan 
+rectangle "机械硬盘(HDD)" as HDD #LightGray 
+
+' 添加注释（放在矩形外部）
+note bottom of Register : <1ns 访问延迟
+note bottom of L1 : 1-3ns 访问延迟
+note bottom of L2 : 3-10ns 访问延迟
+note bottom of L3 : 10-40ns 访问延迟
+note bottom of RAM : 50-100ns 访问延迟
+note bottom of SSD : 10-100μs 访问延迟
+note bottom of HDD : 1-10ms 访问延迟
+
+' 连接关系
+Register -down-> L1 : 数据流动
+L1 -down-> L2 : 数据流动
+L2 -down-> L3 : 数据流动
+L3 -down-> RAM : 数据流动
+RAM -down-> SSD : 数据流动
+SSD -down-> HDD : 数据流动
+
+' 额外注释
+note right of Register : 速度最快\n容量最小
+note right of HDD : 速度最慢\n容量最大
+
+@enduml 

@@ -2,11 +2,8 @@
 skinparam dpi 300
 skinparam defaultFontName "Microsoft YaHei"
 
-' 定义颜色
-!define READ_COLOR #BBDEFB
-!define PREFETCH_COLOR #FFE0B2
-!define HIT_COLOR #C8E6C9
-!define MISS_COLOR #FFCDD2
+' 标题
+title 数据预读取机制
 
 ' 参与者定义
 actor "客户端" as Client
@@ -14,9 +11,6 @@ participant "应用层" as AppLayer
 participant "预读取引擎" as PrefetchEngine
 participant "缓存" as Cache
 participant "存储引擎" as Storage
-
-' 标题
-title 数据预读取机制
 
 ' 正常读取操作（无预读取）
 group 普通读取 - 无预读取
@@ -80,7 +74,7 @@ group 顺序预读取
     PrefetchEngine ->> Storage : 预读取数据块C,D,E
     activate Storage
     
-    note right of PrefetchEngine #PREFETCH_COLOR
+    note right of PrefetchEngine
       预先加载后续数据块
       无需等待直接返回
     end note
@@ -110,7 +104,7 @@ group 命中预读数据
     AppLayer -> Client : 直接返回数据块C
     deactivate AppLayer
     
-    note right #HIT_COLOR: 因为预读取，请求立即得到满足
+    note right: 因为预读取，请求立即得到满足
 end
 
 ' 预读取策略

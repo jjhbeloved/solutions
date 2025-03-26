@@ -1,0 +1,133 @@
+@startuml 文件跨块更新原理
+
+skinparam backgroundColor white
+skinparam handwritten false
+skinparam defaultFontName Microsoft YaHei
+
+title 文件跨块更新原理：更新内容跨块时如何处理？
+
+' 原始文件与分块
+rectangle "原始文件 (1GB)" as file {
+  rectangle "块0\n(0-4MB)" as block0 #lightblue
+  rectangle "块1\n(4-8MB)" as block1 #lightblue
+  rectangle "..." as more
+  rectangle "块100\n(400-404MB)" as block100 #pink
+  rectangle "块101\n(404-408MB)" as block101 #pink
+  rectangle "块102\n(408-412MB)" as block102 #pink
+  rectangle "..." as more2
+  rectangle "块255\n(1020-1024MB)" as block255 #lightblue
+}
+
+note bottom of block100 #pink
+  需要更新的区域
+  (403.9MB处的6MB数据)
+  跨越三个块(100, 101和102)
+end note
+
+' 元数据存储
+database "元数据存储" as metadata {
+  card "文件元数据" as filemeta {
+    card "文件名: example.dat" as filename
+    card "总大小: 1GB" as filesize
+    card "块大小: 4MB" as blocksize
+    card "块数量: 256" as blockcount
+    card "块索引表" as blocktable {
+      card "索引0 → 块0哈希" as idx0
+      card "..." as idxmore
+      card "索引100 → 块100哈希" as idx100
+      card "索引101 → 块101哈希" as idx101
+      card "索引102 → 块102哈希" as idx102
+      card "..." as idxmore2
+    }
+  }
+}
+
+' 块存储
+database "块存储" as blockstorage {
+  card "块0哈希 -> 内容" as blockdata0
+  card "..." as more3
+  card "块100哈希 -> 内容" as blockdata100
+  card "块101哈希 -> 内容" as blockdata101
+  card "块102哈希 -> 内容" as blockdata102
+  card "..." as more4
+}
+
+' 更新过程
+actor "应用程序" as app
+
+app -right-> filemeta: 1. 查询元数据
+filemeta -right-> app: 返回元数据信息
+
+note bottom of app
+  2. 计算需要更新的块:
+  起始位置: 403.9MB
+  更新大小: 6MB
+  
+  起始块 = 403.9MB ÷ 4MB = 块100
+  结束块 = (403.9MB + 6MB) ÷ 4MB = 块102
+  跨越了块100、块101和块102
+end note
+
+app -down-> blockdata100: 3a. 读取块100数据
+blockdata100 -up-> app: 返回4MB数据
+app -down-> blockdata101: 3b. 读取块101数据
+blockdata101 -up-> app: 返回4MB数据
+app -down-> blockdata102: 3c. 读取块102数据
+blockdata102 -up-> app: 返回4MB数据
+
+note left of app
+  4. 局部修改块数据:
+  
+  块100:
+  - 在偏移量3.9MB处更新至块尾
+  - 更新0.1MB (100KB)数据
+  
+  块101:
+  - 更新整个块（全部4MB）
+  
+  块102:
+  - 更新块开头至1.9MB处
+  - 更新1.9MB数据
+  
+  计算三个新块的哈希值
+end note
+
+app -down-> blockstorage: 5. 存储三个新块
+
+app -left-> blocktable: 6. 更新块索引表
+note right of app
+  问题2：跨块更新不改变块顺序
+  
+  - 更新索引100→新块100哈希
+  - 更新索引101→新块101哈希
+  - 更新索引102→新块102哈希
+  - 块的逻辑顺序不变
+  - 只更新涉及的块，其他块引用不变
+  - 索引表中块的位置不变
+end note
+
+' 最终结果
+rectangle "更新后的文件 (逻辑视图)" as newfile {
+  rectangle "块0\n(不变)" as newblock0 #lightblue
+  rectangle "块1\n(不变)" as newblock1 #lightblue
+  rectangle "..." as newmore
+  rectangle "块100\n(已更新)" as newblock100 #lightgreen
+  rectangle "块101\n(已更新)" as newblock101 #lightgreen
+  rectangle "块102\n(已更新)" as newblock102 #lightgreen
+  rectangle "..." as newmore2
+  rectangle "块255\n(不变)" as newblock255 #lightblue
+}
+
+metadata -down-> newfile : 通过元数据索引访问
+
+note right of newfile
+  跨块更新关键特性:
+  - 文件在逻辑上保持连续
+  - 物理存储可能分散
+  - 元数据维护了块之间的逻辑关系
+  - 更新多个块时，只修改这些块的引用
+  - 块的逻辑序列保持不变
+  - 读取时系统仍按原顺序拼接所有块
+end note
+
+@enduml 

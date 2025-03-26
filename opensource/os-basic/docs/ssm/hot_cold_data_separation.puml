@@ -2,13 +2,6 @@
 skinparam dpi 300
 skinparam defaultFontName "Microsoft YaHei"
 
-' 定义颜色
-!define HOT_COLOR #FFB6C1
-!define WARM_COLOR #FFD700
-!define COLD_COLOR #87CEEB
-!define READ_COLOR #00CED1
-!define WRITE_COLOR #FFA07A
-
 ' 标题
 title 热点数据分离机制
 
@@ -20,15 +13,15 @@ package "数据访问层" as AccessLayer {
 }
 
 package "存储层" {
-    database "热数据区域" as HotRegion #HOT_COLOR {
+    database "热数据区域" as HotRegion {
         [高速存储\n(DRAM/高速SSD)] as HotStorage
     }
     
-    database "温数据区域" as WarmRegion #WARM_COLOR {
+    database "温数据区域" as WarmRegion {
         [中速存储\n(普通SSD)] as WarmStorage
     }
     
-    database "冷数据区域" as ColdRegion #COLD_COLOR {
+    database "冷数据区域" as ColdRegion {
         [低速存储\n(HDD/归档存储)] as ColdStorage
     }
 }
@@ -64,9 +57,9 @@ rectangle "数据迁移流程" {
 
 ' 访问频率对比
 rectangle "访问频率分布" {
-    rectangle "<color:red><b>热数据</b></color>\n· 占总数据量的10-20%\n· 占总访问量的80-90%" as HotData #HOT_COLOR
-    rectangle "<color:orange><b>温数据</b></color>\n· 占总数据量的20-30%\n· 占总访问量的10-15%" as WarmData #WARM_COLOR
-    rectangle "<color:blue><b>冷数据</b></color>\n· 占总数据量的50-70%\n· 占总访问量的1-5%" as ColdData #COLD_COLOR
+    rectangle "<b>热数据</b>\n· 占总数据量的10-20%\n· 占总访问量的80-90%" as HotData
+    rectangle "<b>温数据</b>\n· 占总数据量的20-30%\n· 占总访问量的10-15%" as WarmData
+    rectangle "<b>冷数据</b>\n· 占总数据量的50-70%\n· 占总访问量的1-5%" as ColdData
     
     HotData -[hidden]right-> WarmData
     WarmData -[hidden]right-> ColdData

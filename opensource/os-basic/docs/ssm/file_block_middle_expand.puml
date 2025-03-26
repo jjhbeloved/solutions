@@ -1,0 +1,157 @@
+@startuml 文件中间内容扩展原理
+
+skinparam backgroundColor white
+skinparam handwritten false
+skinparam defaultFontName Microsoft YaHei
+
+title 文件中间内容扩展原理：中间位置内容扩展时如何处理？
+
+' 中间扩展场景
+rectangle "原始数据" as orig_data {
+  rectangle "块0\n(0-4MB)" as me_block0 #lightblue
+  rectangle "..." as me_more1
+  rectangle "块100\n(400-404MB)" as me_block100 #lightblue
+  rectangle "块101\n(404-408MB, 要修改)" as me_block101 #pink
+  rectangle "块102\n(408-412MB)" as me_block102 #lightblue
+  rectangle "块103\n(412-416MB)" as me_block103 #lightblue
+  rectangle "..." as me_more2
+  rectangle "块255\n(1020-1024MB)" as me_block255 #lightblue
+}
+
+note right of me_block101 #pink
+  原始情况：
+  - 块101（404-408MB）装有4MB数据
+  - 要将其中2MB数据替换为6MB新数据
+  - 替换后总数据变为8MB，超出了一个块能容纳的4MB
+end note
+
+' 元数据
+database "原始元数据" as orig_metadata {
+  card "索引表" as old_idx {
+    card "..." as old_more1
+    card "索引99 → 块99哈希" as old_idx99
+    card "索引100 → 块100哈希" as old_idx100
+    card "索引101 → 块101哈希" as old_idx101
+    card "索引102 → 块102哈希" as old_idx102
+    card "索引103 → 块103哈希" as old_idx103
+    card "..." as old_more2
+  }
+}
+
+' 更新流程
+actor "应用程序" as app
+
+app -down-> orig_metadata: 1. 查询元数据
+orig_metadata -up-> app: 返回文件索引
+
+note left of app
+  2. 中间块扩展问题分析:
+  
+  - 块101需要扩展，原4MB变为8MB
+  - 一个块最多容纳4MB数据
+  - 需要额外的块存储溢出部分
+  - 溢出块必须在原块101之后
+end note
+
+note bottom of app
+  3. 两种处理策略：
+  
+  方案A：索引表重组（成本高）
+  - 在索引表中间插入新块引用
+  - 所有后续块索引位置递增调整
+  
+  方案B：链接块结构（常用优化）
+  - 块101内包含对溢出块的引用指针
+  - 索引表结构保持不变
+  - 读取时系统处理块间链接
+end note
+
+' 方案A：索引表重组
+rectangle "方案A：索引表重组" as solution_a {
+  rectangle "扩展后数据" as expanded_data_a {
+    rectangle "..." as exp_more1_a
+    rectangle "块100\n(不变)" as exp_block100_a #lightblue
+    rectangle "块101\n(已更新)" as exp_block101_a #lightgreen
+    rectangle "块101溢出\n(新增块)" as exp_overflow_a #lightgreen
+    rectangle "块102\n(位置后移)" as exp_block102_a #lightblue
+    rectangle "块103\n(位置后移)" as exp_block103_a #lightblue
+    rectangle "..." as exp_more2_a
+  }
+  
+  database "调整后元数据" as new_metadata_a {
+    card "索引表" as new_idx_a {
+      card "..." as new_more1_a
+      card "索引100 → 块100哈希 (不变)" as new_idx100_a
+      card "索引101 → 块101新哈希 (更新)" as new_idx101_a
+      card "索引102 → 块101溢出哈希 (插入)" as new_idx102_a
+      card "索引103 → 原块102哈希 (后移)" as new_idx103_a
+      card "索引104 → 原块103哈希 (后移)" as new_idx104_a
+      card "..." as new_more2_a
+    }
+  }
+  
+  note top of new_metadata_a
+    索引表重组挑战:
+    - 需要移动所有后续索引
+    - 大文件情况下可能非常昂贵
+    - 可能需要移动数百万索引项
+    - 产生大量元数据更新
+  end note
+}
+
+' 方案B：链接块结构
+rectangle "方案B：链接块结构" as solution_b {
+  rectangle "扩展后数据" as expanded_data_b {
+    rectangle "..." as exp_more1_b
+    rectangle "块100\n(不变)" as exp_block100_b #lightblue
+    rectangle "块101\n(包含溢出块引用)" as exp_block101_b #lightgreen
+    rectangle "块102\n(位置不变)" as exp_block102_b #lightblue
+    rectangle "..." as exp_more2_b
+  }
+  
+  rectangle "溢出块\n(单独存储)" as overflow_block_b #lightgreen
+  
+  exp_block101_b .right.> overflow_block_b : 包含指针引用
+  
+  database "优化后元数据" as new_metadata_b {
+    card "索引表" as new_idx_b {
+      card "..." as new_more1_b
+      card "索引100 → 块100哈希 (不变)" as new_idx100_b
+      card "索引101 → 块101新哈希 (更新)" as new_idx101_b
+      card "索引102 → 块102哈希 (不变)" as new_idx102_b
+      card "..." as new_more2_b
+    }
+  }
+  
+  note top of new_metadata_b
+    链接块优化优点:
+    - 索引表结构保持不变
+    - 无需移动后续索引
+    - 元数据更新最小化
+    - 只修改块101的引用
+  end note
+}
+
+note bottom of solution_b
+  问题4：中间扩展的性能考量
+  
+  1. 中间扩展成本远高于追加:
+     - 追加：只在索引表末尾添加项
+     - 中间扩展：需要调整所有后续引用
+  
+  2. 常见优化策略:
+     - 链接块结构：块内包含溢出引用
+     - 间接块表：使用多级索引减少调整范围
+     - 写时复制：创建新的文件版本
+     - 预留空间：在块间预留扩展空间
+  
+  3. 性能对比(1GB文件):
+     - 追加10MB: 简单高效，只更新末尾
+     - 中间扩展: 复杂昂贵，影响整个索引结构
+  
+  4. 实际应用:
+     - 大多系统优化追加操作
+     - 尽量避免或特殊处理中间扩展
+end note
+
+@enduml 

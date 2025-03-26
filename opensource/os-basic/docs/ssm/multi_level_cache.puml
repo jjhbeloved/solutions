@@ -2,22 +2,14 @@
 skinparam dpi 300
 skinparam defaultFontName "Microsoft YaHei"
 
-' 定义颜色
-!define L1_COLOR #FFD1DC
-!define L2_COLOR #FFE4C4
-!define DISK_COLOR #DCDCDC
-!define REQUEST_COLOR #87CEFA
-!define HIT_COLOR #98FB98
-!define MISS_COLOR #FFA07A
-
-actor "客户端请求" as Client
-participant "L1缓存\n(进程内存)" as L1 #L1_COLOR
-participant "L2缓存\n(共享内存)" as L2 #L2_COLOR
-participant "块缓存\n(磁盘缓存)" as BlockCache #DISK_COLOR
-participant "存储引擎" as Storage
-
 ' 标题
 title 多级缓存机制
+
+actor "客户端请求" as Client
+participant "L1缓存\n(进程内存)" as L1
+participant "L2缓存\n(共享内存)" as L2
+participant "块缓存\n(磁盘缓存)" as BlockCache
+participant "存储引擎" as Storage
 
 ' 缓存命中场景
 group L1缓存命中
@@ -28,7 +20,7 @@ group L1缓存命中
     L1 -> Client : 返回数据
     deactivate L1
     
-    note over Client, L1 #HIT_COLOR: 延迟: <100ns
+    note over Client, L1: 延迟: <100ns
 end
 
 ' L1缓存未命中但L2命中
@@ -47,7 +39,7 @@ group L1缓存未命中，L2缓存命中
     L1 -> Client : 返回数据
     deactivate L1
     
-    note over Client, L2 #HIT_COLOR: 延迟: 几微秒
+    note over Client, L2: 延迟: 几微秒
 end
 
 ' L1和L2都未命中但块缓存命中
@@ -73,7 +65,7 @@ group L1/L2缓存未命中，块缓存命中
     L1 -> Client : 返回数据
     deactivate L1
     
-    note over Client, BlockCache #HIT_COLOR: 延迟: 几百微秒
+    note over Client, BlockCache: 延迟: 几百微秒
 end
 
 ' 所有缓存都未命中
@@ -104,7 +96,7 @@ group 所有缓存未命中
     L1 -> Client : 返回数据
     deactivate L1
     
-    note over Client, Storage #MISS_COLOR: 延迟: 毫秒级
+    note over Client, Storage: 延迟: 毫秒级
 end
 
 ' 替换策略

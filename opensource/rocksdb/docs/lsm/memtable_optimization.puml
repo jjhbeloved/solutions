@@ -1,0 +1,130 @@
+@startuml memtable_optimization
+allow_mixing
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+' 标题
+title RocksDB MemTable优化技术
+
+' 未优化的MemTable
+package "普通跳表结构" as BasicSkipList {
+    class "Node" as BasicNode {
+        + key_
+        + value_
+        + forward_[levels]
+    }
+    
+    rectangle "内存分配" as BasicAlloc {
+        rectangle "节点1" as BasicNode1
+        rectangle "节点2" as BasicNode2
+        rectangle "节点3" as BasicNode3
+    }
+    
+    note bottom of BasicAlloc
+      问题:
+      - 每个节点单独分配内存
+      - 指针间接访问value
+      - 内存碎片化
+      - 缓存不友好
+    end note
+}
+
+' 优化的MemTable
+package "优化的MemTable设计" as OptimizedMemTable {
+    ' Arena内存池
+    package "Arena内存池" as Arena {
+        rectangle "大块1(4KB)" as ArenaBlock1
+        rectangle "大块2(4KB)" as ArenaBlock2
+        rectangle "大块3(4KB)" as ArenaBlock3
+        
+        ArenaBlock1 -[hidden]right-> ArenaBlock2
+        ArenaBlock2 -[hidden]right-> ArenaBlock3
+    }
+    
+    ' 跳表节点内联
+    rectangle "跳表节点优化" as NodeOpt {
+        rectangle "内联小值节点" as InlineNode {
+            rectangle "Key(内联)" as InlineKey
+            rectangle "Value(内联)" as InlineValue
+            rectangle "NextPointers[]" as InlineNext
+        }
+        
+        rectangle "指针引用大值节点" as PtrNode {
+            rectangle "Key(内联)" as PtrKey
+            rectangle "Value指针" as PtrValuePtr
+            rectangle "NextPointers[]" as PtrNext
+        }
+        
+        InlineNode -[hidden]right-> PtrNode
+    }
+    
+    ' 前缀压缩
+    rectangle "前缀压缩" as PrefixComp {
+        rectangle "完整键: user12345:profile:name" as FullKey
+        
+        rectangle "前缀压缩键" as CompressedKey {
+            rectangle "user12345" as PrefixPart
+            rectangle ":profile" as MiddlePart
+            rectangle ":email" as SuffixPart
+        }
+        
+        FullKey -[hidden]right-> CompressedKey
+    }
+    
+    note bottom of PrefixComp
+      前缀压缩优势:
+      - 减少内存使用
+      - 提高缓存命中率
+      - 键比较更高效
+    end note
+}
+
+' 内存使用和布局对比
+rectangle "内存布局对比" as MemoryLayoutCompare {
+    ' 传统布局
+    rectangle "传统内存布局" as TraditionalLayout {
+        rectangle "节点1" as TNode1
+        rectangle "..." as TDots1
+        rectangle "值1" as TValue1
+        
+        rectangle "节点2" as TNode2
+        rectangle "..." as TDots2
+        rectangle "值2" as TValue2
+        
+        rectangle "节点3" as TNode3
+        rectangle "..." as TDots3
+        rectangle "值3" as TValue3
+    }
+    
+    ' 优化布局
+    rectangle "优化内存布局" as OptimizedLayout {
+        rectangle "连续内存块" as OptBlock {
+            rectangle "节点1+值1" as OptNode1
+            rectangle "节点2+值2" as OptNode2
+            rectangle "节点3+值3" as OptNode3
+            rectangle "..." as OptDots
+        }
+    }
+    
+    TraditionalLayout -[hidden]right-> OptimizedLayout
+}
+
+' 性能优化统计
+rectangle "性能优势" as PerformanceGains {
+    card "内存使用: 减少40-60%" as MemUsage
+    card "写入吞吐量: 提高50-100%" as WritePerf
+    card "读取延迟: 降低20-30%" as ReadPerf
+    card "缓存命中率: 提高30-50%" as CacheHit
+}
+
+' 关键优化点
+note bottom of OptimizedMemTable
+  MemTable核心优化技术:
+  1. Arena内存池: 批量分配内存，减少系统调用和内存碎片
+  2. 内联小值: 直接存储在跳表节点中，减少指针间接
+  3. 前缀压缩: 相邻键共享前缀，减少内存使用
+  4. 内存布局优化: 相关数据放在一起，提高缓存命中率
+  5. 并发控制优化: 细粒度锁和无锁技术提高并发性能
+end note
+
+@enduml 

@@ -1,0 +1,118 @@
+@startuml os_cache_buffer
+
+!define RECTANGLE stereotype=rectangle
+
+skinparam DefaultFontSize 14
+skinparam DefaultFontName Arial
+skinparam ArrowThickness 1.5
+skinparam ComponentStyle rectangle
+
+title 操作系统层面的Cache与Buffer机制
+
+package "应用层" {
+  [应用程序1] as App1
+  [应用程序2] as App2
+  [应用程序3] as App3
+}
+
+package "操作系统内存管理" {
+  rectangle "Page Cache" as PageCache {
+    rectangle "文件页1 (4KB)" as Page1
+    rectangle "文件页2 (4KB)" as Page2
+    rectangle "文件页3 (4KB)" as Page3
+    rectangle "..." as PageMore
+  }
+  
+  rectangle "Buffer Cache" as BufferCache {
+    rectangle "块缓冲区1" as Buffer1
+    rectangle "块缓冲区2" as Buffer2
+    rectangle "块缓冲区3" as Buffer3
+    rectangle "..." as BufferMore
+  }
+
+  rectangle "内存分配器" as MemAlloc
+}
+
+package "文件系统层" {
+  [文件系统] as FS
+  [VFS接口] as VFS
+}
+
+package "块设备层" {
+  [块设备接口] as BlockDev
+  [I/O调度器] as IOSched
+}
+
+package "存储设备" {
+  rectangle "存储介质" {
+    rectangle "文件数据" as FileData
+    rectangle "文件元数据" as FileMeta
+    rectangle "块设备数据" as BlockData
+  }
+}
+
+' 连接关系
+App1 -down-> VFS : "read()/write()"
+App2 -down-> VFS : "read()/write()"
+App3 -down-> VFS : "open()/close()"
+
+VFS -down-> PageCache : "文件内容访问"
+VFS -down-> BufferCache : "元数据访问"
+FS -up-> BufferCache : "读写块设备"
+FS -up-> PageCache : "管理文件页"
+
+PageCache -down-> FS : "缓存未命中/脏页刷盘"
+PageCache -right-> MemAlloc : "分配/释放页"
+BufferCache -right-> MemAlloc : "分配/释放缓冲区"
+BufferCache -down-> BlockDev : "设备I/O"
+
+FS -down-> BlockDev : "底层请求"
+BlockDev -down-> IOSched : "请求队列"
+IOSched -down-> FileData : "读写数据"
+IOSched -down-> FileMeta : "读写元数据"
+IOSched -down-> BlockData : "读写原始块"
+
+' 注释说明
+note right of PageCache
+  **Page Cache 特点**:
+  - 缓存文件内容
+  - 以页(4KB)为单位
+  - 支持预读和延迟写
+  - 面向文件操作
+end note
+
+note right of BufferCache
+  **Buffer Cache 特点**:
+  - 缓存块设备I/O
+  - 缓存文件系统元数据
+  - 以块为单位
+  - 面向底层设备
+end note
+
+note right of FS
+  在现代Linux中:
+  Page Cache和Buffer Cache
+  共享统一内存管理,
+  但保持不同接口
+end note
+
+' 流程说明
+note bottom of PageCache
+  **读流程**: 
+  1. 检查Page Cache
+  2. 命中直接返回
+  3. 未命中从磁盘读取并缓存
+  
+  **写流程**:
+  1. 写入Page Cache (脏页)
+  2. 后台或显式刷盘
+end note
+
+note bottom of BufferCache
+  **工作原理**:
+  1. 缓存底层块设备I/O
+  2. 管理文件系统元数据
+  3. 合并优化设备I/O请求
+end note
+
+@enduml 

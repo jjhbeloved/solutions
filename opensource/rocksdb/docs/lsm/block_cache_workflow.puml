@@ -1,0 +1,113 @@
+@startuml block_cache_workflow
+
+!theme plain
+title RocksDB Block Cache分片工作流程
+
+' 定义参与者
+actor "应用程序" as App
+participant "ShardedCache" as Cache
+participant "分片管理器" as Manager
+collections "分片数组" as Shards
+participant "目标分片" as Shard
+participant "哈希表" as HashTable
+participant "LRU链表" as LRUList
+
+' 分片划分与定位流程
+note over App, Shards: 1. 分片的划分与定位
+group 初始化分片
+    App -> Cache: 创建缓存(容量, 分片数)
+    activate Cache
+    Cache -> Manager: 初始化分片管理器
+    activate Manager
+    Manager -> Shards: 创建分片数组(2^N个分片)
+    loop 对每个分片
+        Manager -> Shards: 初始化分片(哈希表、LRU链表、互斥锁)
+    end
+    Manager --> Cache: 返回管理器实例
+    deactivate Manager
+    Cache --> App: 返回缓存实例
+    deactivate Cache
+end
+
+' 查找流程
+note over App, LRUList: 2. 查找流程
+group 缓存查找
+    App -> Cache: Lookup(key, hash)
+    activate Cache
+    Cache -> Manager: 计算分片索引 = hash & (num_shards - 1)
+    Manager -> Shards: 定位目标分片
+    Shards -> Shard: 获取分片实例
+    activate Shard
+    
+    Shard -> Shard: 获取分片锁(互斥锁)
+    Shard -> HashTable: 在哈希表中查找键
+    
+    alt 找到缓存项
+        HashTable --> Shard: 返回缓存项句柄
+        Shard -> Shard: 增加引用计数
+        Shard -> LRUList: 从当前位置移除
+        Shard -> LRUList: 重新插入到LRU链表头部
+        Shard -> Shard: 释放分片锁
+        Shard --> Cache: 返回缓存项句柄
+        Cache -> Cache: 更新命中率统计
+        Cache --> App: 返回缓存项
+    else 未找到
+        HashTable --> Shard: 返回null
+        Shard -> Shard: 释放分片锁
+        Shard --> Cache: 返回null
+        Cache -> Cache: 更新未命中统计
+        Cache --> App: 返回null
+    end
+    deactivate Shard
+    deactivate Cache
+end
+
+' 插入流程
+note over App, LRUList: 3. 插入与淘汰流程
+group 缓存插入
+    App -> Cache: Insert(key, hash, value, charge)
+    activate Cache
+    Cache -> Manager: 计算分片索引 = hash & (num_shards - 1)
+    Manager -> Shards: 定位目标分片
+    Shards -> Shard: 获取分片实例
+    activate Shard
+    
+    Shard -> Shard: 获取分片锁(互斥锁)
+    Shard -> Shard: 创建新的缓存项
+    
+    alt 空间不足
+        loop 直到空间足够
+            Shard -> LRUList: 获取LRU链表尾部项
+            LRUList --> Shard: 返回最旧的缓存项
+            Shard -> LRUList: 从LRU链表移除
+            Shard -> HashTable: 从哈希表删除
+            Shard -> Shard: 释放内存(调用删除器)
+        end
+    end
+    
+    Shard -> HashTable: 插入哈希表
+    Shard -> LRUList: 插入LRU链表头部
+    Shard -> Shard: 更新使用量统计
+    Shard -> Shard: 释放分片锁
+    
+    Shard --> Cache: 返回缓存项句柄
+    Cache --> App: 返回缓存项
+    deactivate Shard
+    deactivate Cache
+end
+
+' 分片间无数据迁移说明
+note over App, LRUList
+  <b>关于分片间数据迁移:</b>
+  
+  RocksDB的标准实现中，分片间不进行数据迁移:
+  - 分片数量在初始化时固定，运行时不变
+  - 同一个键总是映射到同一个分片(确定性映射)
+  - 不需要跨分片查询
+  - 不进行分片间的负载均衡
+  
+  这种设计简化了实现，提高了性能，
+  但要求分片大小合理设置以避免负载不均衡。
+end note
+
+@enduml 

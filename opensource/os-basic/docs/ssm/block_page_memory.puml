@@ -1,0 +1,160 @@
+@startuml block_page_memory
+title 块和页对内存分配的影响
+
+' 定义样式
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+' 总体内存层次
+package "内存层次结构" as MemoryHierarchy {
+    rectangle "处理器" as Processor {
+        rectangle "CPU寄存器" as Register
+        rectangle "L1缓存\n(32-64KB)" as L1Cache
+        rectangle "L2缓存\n(256KB-1MB)" as L2Cache
+        rectangle "L3共享缓存\n(数MB)" as L3Cache
+    }
+    
+    rectangle "主内存" as MainMemory {
+        rectangle "内存页管理" as PageManagement {
+            rectangle "标准页\n(4KB)" as StdPage
+            rectangle "大页\n(2MB)" as LargePage
+            rectangle "超大页\n(1GB)" as HugePage
+        }
+    }
+    
+    rectangle "存储系统" as StorageSystem {
+        rectangle "块管理" as BlockManagement {
+            rectangle "小块\n(<64KB)" as SmallBlock
+            rectangle "中块\n(64KB-1MB)" as MediumBlock
+            rectangle "大块\n(>1MB)" as LargeBlock
+        }
+    }
+}
+
+' 内存分配层次关系
+Register -down-> L1Cache
+L1Cache -down-> L2Cache
+L2Cache -down-> L3Cache
+L3Cache -down-> MainMemory
+MainMemory -down-> StorageSystem
+
+' 块和页的关系
+note right of PageManagement
+  内存页（Memory Page）:
+  - 操作系统内存管理的基本单位
+  - 虚拟内存映射的最小单位
+  - 物理内存分配和交换的基本单位
+end note
+
+note right of BlockManagement
+  块（Block）:
+  - 存储系统操作的基本单位
+  - 通常为页大小的整数倍
+  - 缓存管理和I/O操作的单位
+end note
+
+' 块和页的映射关系
+rectangle "块与页映射关系" as BlockPageMapping {
+    rectangle "小对象映射" as SmallObjMapping {
+        rectangle "对象1" as Obj1
+        rectangle "对象2" as Obj2
+        rectangle "..." as ObjMore
+    }
+    
+    rectangle "页面" as Page {
+        rectangle "页内碎片" as InternalFrag
+    }
+    
+    rectangle "多页块" as MultiPageBlock {
+        rectangle "页1" as Page1
+        rectangle "页2" as Page2
+        rectangle "页3" as Page3
+    }
+}
+
+' 不同对象分配策略
+rectangle "对象分配策略" as AllocStrategy {
+    card "微/小对象 (<256B)" as TinyObj
+    card "中等对象 (256B-4KB)" as MediumObj
+    card "大对象 (>4KB)" as LargeObj
+    
+    TinyObj --> SmallObjMapping : "对象池/Slab分配"
+    MediumObj --> Page : "页内分配"
+    LargeObj --> MultiPageBlock : "多页分配"
+}
+
+' 关键挑战和影响
+rectangle "关键影响因素" as KeyFactors {
+    card "对齐要求" as Alignment
+    card "碎片化" as Fragmentation
+    card "缓存效率" as CacheEfficiency
+    card "TLB命中率" as TLBHitRate
+    
+    Alignment -[hidden]right-> Fragmentation
+    Fragmentation -[hidden]right-> CacheEfficiency
+    CacheEfficiency -[hidden]right-> TLBHitRate
+}
+
+' 性能指标
+rectangle "性能权衡" as PerformanceTradeoff {
+    card "内存利用率" as MemoryUtilization
+    card "分配/释放速度" as AllocSpeed
+    card "访问效率" as AccessEfficiency
+    
+    MemoryUtilization <--> AllocSpeed : "相互制约"
+    AllocSpeed <--> AccessEfficiency : "相互制约" 
+    AccessEfficiency <--> MemoryUtilization : "相互制约"
+}
+
+' 大块与小块比较
+rectangle "块大小影响" as BlockSizeImpact {
+    card "小块影响:" as SmallBlockImpact
+    card "- 较低内部碎片" as LowIntFrag
+    card "- 较高管理开销" as HighMgmtOverhead
+    card "- 较精细访问粒度" as FineGrained
+    
+    card "大块影响:" as LargeBlockImpact
+    card "- 较高批处理效率" as HighBatchEff
+    card "- 较好顺序读写性能" as GoodSeqPerf
+    card "- 较高预读效率" as HighPrefetchEff
+}
+
+' 现代系统中的应用
+rectangle "现代系统应用" as ModernSysApps {
+    card "LSM树存储" as LSMTree
+    card "缓存系统" as CacheSystem
+    card "内存池实现" as MemPoolImpl
+    
+    note bottom of LSMTree
+      不同层使用不同块大小
+      适应不同更新频率
+    end note
+    
+    note bottom of CacheSystem
+      多级缓存块大小策略
+      热数据用小块，冷数据用大块
+    end note
+    
+    note bottom of MemPoolImpl
+      对象大小分级
+      生命周期管理
+      碎片整理策略
+    end note
+}
+
+' 优化建议
+note bottom of PerformanceTradeoff
+  最佳实践:
+  1. 了解硬件特性(缓存行、TLB、页面大小)
+  2. 测量实际负载性能
+  3. 动态适应工作负载变化
+  4. 全局而非局部优化
+  5. 避免过度优化，寻找"足够好"的方案
+end note
+
+' 连接主要概念
+KeyFactors -[hidden]right-> PerformanceTradeoff
+PerformanceTradeoff -[hidden]down-> BlockSizeImpact
+BlockSizeImpact -[hidden]down-> ModernSysApps
+
+@enduml 

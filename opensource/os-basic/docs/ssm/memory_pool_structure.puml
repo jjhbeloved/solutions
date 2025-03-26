@@ -1,0 +1,83 @@
+@startuml memory_pool_structure
+skinparam dpi 300
+skinparam defaultFontName "Microsoft YaHei"
+
+' 标题
+title 内存池结构设计
+
+' 内存池组件类图
+package "内存池管理器" {
+    class MemoryPool {
+        + Allocate(size): void*
+        + Deallocate(ptr): void
+        + Reset(): void
+        + Release(): void
+        - blocks_: vector<Block*>
+        - current_block_: Block*
+        - current_block_offset_: size_t
+        - remaining_: size_t
+        - block_size_: size_t
+    }
+    
+    class Block {
+        + memory_: char*
+        + size_: size_t
+        + used_: size_t
+    }
+    
+    class FreeList {
+        + Allocate(): void*
+        + Deallocate(ptr): void
+        - free_chunks_: list<void*>
+        - chunk_size_: size_t
+    }
+    
+    class Allocator {
+        + Allocate<T>(): T*
+        + Deallocate<T>(obj): void
+        - pool_: MemoryPool*
+        - free_lists_: FreeList[]
+    }
+    
+    MemoryPool "1" *-- "n" Block : 管理 >
+    Allocator "1" *-- "1" MemoryPool : 使用 >
+    Allocator "1" *-- "n" FreeList : 管理 >
+}
+
+note right of MemoryPool
+  内存池核心功能:
+  - 预分配大块内存
+  - 快速分配小对象
+  - 减少内存碎片
+  - 避免频繁系统调用
+end note
+
+' 系统内存和应用层
+class SystemHeap << (S,#FFFFFF) 系统资源 >>
+class ApplicationObjects << (A,#FFFFFF) 应用对象 >>
+
+' 系统关系
+MemoryPool --> SystemHeap : 批量申请内存
+ApplicationObjects --> Allocator : 请求内存
+
+' 内存分配过程
+note bottom of SystemHeap
+  <b>内存分配过程:</b>
+  1. 应用程序请求内存
+  2a. 如有合适空闲块，从空闲列表返回
+  2b. 否则从内存池分配:
+     3a. 当前块有空间，直接分配
+     3b. 当前块不足，申请新块
+  4. 返回内存给应用
+end note
+
+' 内存池优势
+note bottom of Allocator
+  <b>内存池优势:</b>
+  1. 性能提升: 减少系统调用开销，加速小对象分配
+  2. 内存整合: 减少内存碎片，提高内存利用率
+  3. 简化管理: 统一内存生命周期，减少内存泄漏
+  4. 预测性能: 可预测的分配时间，减少性能抖动
+end note
+
+@enduml 

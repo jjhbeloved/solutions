@@ -1,0 +1,80 @@
+@startuml memtable_flush_triggers
+
+skinparam {
+  BackgroundColor white
+  ArrowColor #2C3E50
+  ComponentBackgroundColor #3498DB
+  ComponentBorderColor #2C3E50
+  DatabaseBackgroundColor #E74C3C
+  CloudBackgroundColor #9B59B6
+  NoteBackgroundColor #F1C40F
+  NoteBorderColor #D35400
+  ActorBackgroundColor #16A085
+  ActorBorderColor #1ABC9C
+}
+
+title RocksDB MemTable触发flush条件
+
+database "活跃MemTable" as ActiveMemTable #3498DB
+note right of ActiveMemTable
+  所有新写入首先进入活跃MemTable
+  维护内部计数器跟踪大小
+end note
+
+' 创建一个"压力表"来表示触发条件
+component "触发条件" as TriggerConditions {
+  component "1. 单个MemTable大小达到阈值\n(write_buffer_size)" as SizeThreshold
+  component "2. 全局内存压力超限\n(多个列族MemTable总和)" as GlobalMemPressure
+  component "3. 手动触发\n(调用Flush API)" as ManualFlush
+  component "4. 创建检查点\n(checkpoint创建)" as CheckpointCreation
+  component "5. WAL文件过大\n(日志文件大小阈值)" as WALSize
+}
+
+database "不可变MemTable" as ImmutableMemTable #E74C3C
+note right of ImmutableMemTable
+  只读状态
+  等待后台线程刷盘
+  可能有多个不可变MemTable同时存在
+end note
+
+cloud "后台刷盘过程" as FlushProcess #9B59B6
+
+actor "新写入" as NewWrite #16A085
+database "新MemTable" as NewMemTable #2ECC71
+
+' 连接关系
+ActiveMemTable --> TriggerConditions : 监控
+TriggerConditions -right-> ImmutableMemTable : 转换为\n不可变
+ImmutableMemTable -right-> FlushProcess : 写入SST文件
+NewWrite -up-> NewMemTable : 继续接收
+ActiveMemTable -[#FF0000,dashed]-> NewMemTable : 被替换
+
+' 添加详细说明
+note bottom of TriggerConditions
+  **优先级和影响**:
+  - 任何一个条件满足都会触发flush
+  - 触发后立即创建新的MemTable接收写入
+  - 触发的MemTable变为不可变状态
+  - 可配置内存限制策略(硬限制/软限制)
+end note
+
+note bottom of FlushProcess
+  **刷盘过程特点**:
+  - 由专用后台线程执行
+  - 刷盘时不阻塞前台写入
+  - 优先处理较早的不可变MemTable
+  - 生成L0层的SST文件
+  - 完成后释放内存资源
+end note
+
+' 添加一个系统状态流程
+legend right
+  **MemTable状态变化流程**:
+  1. 活跃MemTable接收写入，同时累计大小计数
+  2. 触发条件满足时转为不可变状态
+  3. 同时创建新的活跃MemTable继续服务
+  4. 后台线程异步将不可变MemTable写入SST
+  5. 刷盘完成后释放内存资源
+end legend
+
+@enduml 

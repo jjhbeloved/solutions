@@ -19,22 +19,17 @@
       - [源代码路径](#源代码路径)
     - [2.3 LSM树的层级结构](#23-lsm树的层级结构)
   - [三、MemTable与SSTable](#三memtable与sstable)
-    - [3.1 MemTable详解](#31-memtable详解)
-      - [MemTable的实现](#memtable的实现)
-      - [MemTable的生命周期](#memtable的生命周期)
-      - [MemTable的大小控制](#memtable的大小控制)
-    - [3.2 SSTable格式与结构](#32-sstable格式与结构)
+    - [3.1 SSTable格式与结构](#31-sstable格式与结构)
       - [SSTable文件格式](#sstable文件格式)
       - [数据在SSTable中的组织方式](#数据在sstable中的组织方式)
       - [SSTable的不变性](#sstable的不变性)
-    - [3.3 MemTable与SSTable的设计权衡](#33-memtable与sstable的设计权衡)
+    - [3.2 MemTable与SSTable的设计权衡](#32-memtable与sstable的设计权衡)
       - [系统资源特性角度](#系统资源特性角度)
       - [业务需求角度](#业务需求角度)
       - [架构成本与效益分析](#架构成本与效益分析)
       - [与其他设计的对比](#与其他设计的对比)
       - [SSTable与Block Cache的协同优化](#sstable与block-cache的协同优化)
-    - [3.5 MemTable优化](#35-memtable优化)
-    - [3.6 Block Cache优化](#36-block-cache优化)
+    - [3.3 Block Cache优化](#33-block-cache优化)
   - [四、分层设计与压缩策略](#四分层设计与压缩策略)
     - [4.1 分层存储模型](#41-分层存储模型)
       - [重叠键范围的意义与影响](#重叠键范围的意义与影响)
@@ -224,40 +219,7 @@ RocksDB使用Block Cache机制来提高读取性能，这是读取路径的关�
 
 ## 三、MemTable与SSTable
 
-### 3.1 MemTable详解
-
-#### MemTable的实现
-
-RocksDB中的MemTable默认使用跳表(SkipList)数据结构实现，具有以下特点：
-
-- 支持高效的插入和查找操作(O(log n)复杂度)
-- 内存中保持排序状态
-- 支持范围查询
-- 并发访问友好
-
-[MemTable的跳表实现](docs/lsm/skiplist-memtable.puml)
-
-除了默认的跳表实现，RocksDB还支持其它MemTable实现：
-
-- HashSkipList：结合哈希表和跳表的实现
-- HashLinkList：适合点查询场景
-- Vector：批量插入场景的简单实现
-
-#### MemTable的生命周期
-
-1. **活跃状态**：接收新的写入请求
-2. **不可变状态**：达到大小阈值后转为不可变，等待刷盘
-3. **刷盘完成**：数据写入SSTable文件后，从内存中移除
-
-#### MemTable的大小控制
-
-MemTable大小通过以下参数控制：
-
-- `write_buffer_size`：单个MemTable的大小阈值
-- `max_write_buffer_number`：最大可同时存在的MemTable数量
-- `min_write_buffer_number_to_merge`：合并刷盘的最小MemTable数量
-
-### 3.2 SSTable格式与结构
+### 3.1 SSTable格式与结构
 
 SSTable(Sorted String Table)是RocksDB持久化数据的基本单位，具有以下特点：
 
@@ -394,7 +356,7 @@ SSTable文件一旦创建就是不可变的。这种不变性带来几个优势�
    - 不需要维护缓存一致性
    - 减少了系统复杂度
 
-### 3.3 MemTable与SSTable的设计权衡
+### 3.2 MemTable与SSTable的设计权衡
 
 RocksDB使用MemTable(内存表)和SSTable(持久化表)两种不同数据结构分别处理写入和持久化存储，这种设计从多个层面带来了显著优势：
 
@@ -567,26 +529,7 @@ RocksDB使用MemTable(内存表)和SSTable(持久化表)两种不同数据结构
 
 这种双重数据结构设计在RocksDB中不仅是一种技术选择，更是一种架构哲学，它在系统资源利用、业务需求满足和整体成本效益之间取得了良好的平衡，使得RocksDB能够在众多应用场景中表现出色。
 
-### 3.5 MemTable优化
-
-RocksDB的MemTable是一个内存中的数据结构，负责缓冲写入操作并提供读取支持。
-
-[查看MemTable优化图](docs/lsm/memtable_optimization.puml)
-
-核心优化技术：
-
-1. **跳表数据结构**：平衡查询效率和内存使用
-2. **Arena内存池**：批量分配内存，提高内存利用率
-3. **内联小值**：小值直接存储在跳表节点中，减少指针间接
-4. **前缀压缩**：相邻键共享前缀，减少内存使用
-
-性能影响：
-
-- 减少40-60%的内存使用
-- 提高50-100%的写入吞吐量
-- 读取延迟降低20-30%
-
-### 3.6 Block Cache优化
+### 3.3 Block Cache优化
 
 RocksDB的Block Cache是用于缓存数据块和索引块的内存结构，直接影响读取性能。
 

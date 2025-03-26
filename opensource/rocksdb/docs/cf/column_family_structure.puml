@@ -1,0 +1,92 @@
+@startuml RocksDB列族结构关系图
+skinparam componentStyle rectangle
+skinparam backgroundColor white
+skinparam defaultTextAlignment center
+
+package "RocksDB实例" as RocksDB {
+  component "ColumnFamilySet" as CFSet {
+    note top of CFSet: 管理所有列族\n维护名称和ID映射
+  }
+  
+  package "列族 (Column Families)" as CFs {
+    component "默认列族\n(Default CF)" as DefaultCF
+    component "列族 1\n(CF 1)" as CF1 
+    component "列族 2\n(CF 2)" as CF2
+    component "列族 N\n(CF N)" as CFN
+  }
+  
+  component "共享WAL文件\n(Write-Ahead Log)" as SharedWAL
+  
+  package "列族内部结构" as CFStructure {
+    together {
+      component "ColumnFamilyData" as CFData {
+        component "选项配置\n(Options)" as CFOptions
+        component "当前活跃MemTable" as MemTable
+        component "不可变MemTable列表" as ImmMemTables
+      }
+
+      package "SST文件层级" as SST {
+        component "L0 SST Files" as L0
+        component "L1 SST Files" as L1
+        component "L2-LN SST Files" as LN
+      }
+      
+      component "TableCache" as TableCache
+      component "Version管理" as VersionMgmt
+    }
+  }
+  
+  ' 连接关系
+  CFSet -down-> DefaultCF: 管理
+  CFSet -down-> CF1: 管理
+  CFSet -down-> CF2: 管理
+  CFSet -down-> CFN: 管理
+  
+  DefaultCF -down-> CFData: 包含
+  CF1 -[hidden]-> CFData
+  CF2 -[hidden]-> CFData
+  CFN -[hidden]-> CFData
+  
+  DefaultCF -down..> SharedWAL: 共享(默认)\n可配置独立WAL
+  CF1 -down..> SharedWAL: 共享(默认)\n可配置独立WAL
+  CF2 -down..> SharedWAL: 共享(默认)\n可配置独立WAL
+  CFN -down..> SharedWAL: 共享(默认)\n可配置独立WAL
+  
+  MemTable -down-> ImmMemTables: 满后转为不可变
+  ImmMemTables -down-> L0: 刷盘
+  
+  L0 -down-> L1: 压缩
+  L1 -down-> LN: 压缩
+  
+  VersionMgmt -right-> SST: 管理文件版本
+  VersionMgmt -left-> MemTable: 管理
+  VersionMgmt -left-> ImmMemTables: 管理
+  TableCache -up-> SST: 缓存
+  
+  note right of MemTable
+    每个列族有自己独立的MemTable
+    用于接收新的写入数据
+  end note
+  
+  note right of ImmMemTables
+    每个列族有独立的不可变MemTable列表
+    等待后台线程刷盘到SST文件
+  end note
+  
+  note right of SST
+    每个列族有独立的SST文件集合
+    按照层级结构组织
+  end note
+}
+
+legend right
+  <b>RocksDB列族(Column Families)关系图</b>
+  ----
+  列族是RocksDB中数据组织的基本单位
+  - 每个列族有独立的键值命名空间
+  - 独立的MemTable和SST文件
+  - 默认共享WAL文件(可配置为独立)
+  - 可以单独设置不同的选项配置
+endlegend
+
+@enduml 

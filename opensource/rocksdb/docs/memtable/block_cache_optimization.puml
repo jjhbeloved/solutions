@@ -1,0 +1,85 @@
+@startuml Block_Cache优化
+
+skinparam {
+  BackgroundColor white
+  ArrowColor #2C3E50
+  ComponentBackgroundColor #3498DB
+  ComponentBorderColor #2C3E50
+  DatabaseBackgroundColor #E74C3C
+  CloudBackgroundColor #9B59B6
+  StorageBackgroundColor #1ABC9C
+  StorageBorderColor #16A085
+  NoteBackgroundColor #F1C40F
+  NoteBorderColor #D35400
+}
+
+title RocksDB中的多层缓存系统
+
+' 核心组件
+component "写入路径" as WritePath
+component "读取路径" as ReadPath
+
+' 缓存层次
+database "MemTable(写缓冲)" as MemTable #3498DB
+note right of MemTable
+  使用跳表(SkipList)实现
+  所有新写入先进入此处
+  同时作为第一级读缓存
+end note
+
+database "Block Cache(块缓存)" as BlockCache #E74C3C
+note right of BlockCache
+  缓存从SST文件读取的数据块
+  支持分片设计减少锁争用
+  LRU/CLOCK/LFU可选替换策略
+end note
+
+cloud "操作系统页缓存" as OSCache #9B59B6
+note right of OSCache
+  操作系统维护的页缓存
+  对RocksDB透明
+  可通过直接I/O绕过
+end note
+
+storage "SSTable文件" as SST #1ABC9C
+note right of SST
+  持久化存储的基本单位
+  不可变性简化缓存管理
+  包含数据块、索引块和过滤器
+end note
+
+' 各组件间的数据流
+WritePath -down-> MemTable : 写入
+MemTable -right-> SST : 刷盘
+ReadPath -down-> MemTable : 1. 首先查询
+ReadPath -down-> BlockCache : 2. 其次查询
+BlockCache <-right-> OSCache : 读取/写入块
+OSCache <-right-> SST : 读取/写入文件
+
+' 缓存特性对比
+component "MemTable特性" as MemTableFeatures {
+  component "适合写入优化" as MemWrite
+  component "保持最新数据视图" as MemLatest
+  component "内存占用相对较高" as MemHigh
+}
+
+component "Block Cache特性" as BlockCacheFeatures {
+  component "适合读取优化" as BCRead
+  component "热点历史数据" as BCHot
+  component "内存效率更高" as BCEfficient
+}
+
+MemTable -down-> MemTableFeatures
+BlockCache -down-> BlockCacheFeatures
+
+' 优化策略
+component "Block Cache优化" as BCOpt {
+  component "分片减少锁争用" as Sharding
+  component "替换策略选择" as EvictionPolicy
+  component "块类型优先级" as BlockPriority
+  component "预取策略" as Prefetch
+}
+
+BlockCache -down-> BCOpt
+
+@enduml 

@@ -1,0 +1,78 @@
+@startuml MemTable生命周期
+
+skinparam {
+  ArrowColor #2C3E50
+  BorderColor #2C3E50
+  BackgroundColor white
+  StateBackgroundColor #3498DB
+  StateBorderColor #2C3E50
+  StateFontColor white
+  StateStartColor #2ECC71
+  StateEndColor #E74C3C
+}
+
+title RocksDB中MemTable的生命周期
+
+state "创建MemTable" as Create #2ECC71
+state "活跃状态\n(Active)" as Active {
+  state "可读可写" as Mutable
+  state "接收写入请求" as ReceiveWrites
+  state "大小监控" as SizeMonitor
+  
+  [*] --> Mutable
+  Mutable --> ReceiveWrites
+  ReceiveWrites --> SizeMonitor : 写入后更新大小
+  SizeMonitor --> Mutable : 未达到阈值
+}
+
+state "不可变状态\n(Immutable)" as Immutable {
+  state "只读状态" as ReadOnly
+  state "等待刷盘队列" as WaitingQueue
+
+  [*] --> ReadOnly
+  ReadOnly --> WaitingQueue : 加入刷盘队列
+}
+
+state "刷盘阶段\n(Flushing)" as Flushing {
+  state "创建SSTable构建器" as CreateBuilder
+  state "遍历键值对" as Iterator
+  state "生成SST文件" as GenerateSST
+  state "更新版本信息" as UpdateVersion
+  
+  [*] --> CreateBuilder
+  CreateBuilder --> Iterator
+  Iterator --> GenerateSST
+  GenerateSST --> UpdateVersion
+}
+
+state "清理阶段\n(Cleanup)" as Cleanup #E74C3C
+
+[*] --> Create
+Create --> Active
+
+Active --> Immutable : 达到大小阈值\n或手动触发
+Immutable --> Flushing : 后台线程处理
+Flushing --> Cleanup : 持久化完成
+Cleanup --> [*] : 内存释放
+
+note bottom of Active
+  大小阈值由 write_buffer_size 控制
+  默认为64MB
+end note
+
+note right of Immutable
+  可能有多个不可变MemTable
+  同时等待刷盘
+end note
+
+note right of Flushing
+  由专用的flush线程处理
+  不阻塞读写操作
+end note
+
+note right of Cleanup
+  引用计数归零时释放内存
+  完成生命周期
+end note
+
+@enduml 

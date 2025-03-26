@@ -1,0 +1,89 @@
+@startuml Cursor RGA 架构
+!theme plain
+skinparam linetype ortho
+skinparam componentStyle rectangle
+
+' 主要组件定义
+rectangle "用户界面" as UI {
+  rectangle "编辑器组件" as Editor
+  rectangle "AI交互面板" as AIPanel
+  rectangle "建议与提示" as Suggestions
+}
+
+rectangle "Cursor核心" as Core {
+  rectangle "查询处理器" as QueryProcessor
+  rectangle "上下文管理器" as ContextManager
+  rectangle "提示工程引擎" as PromptEngine
+  rectangle "结果处理器" as ResultProcessor
+}
+
+rectangle "本地索引系统" as IndexSystem {
+  rectangle "文件监控器" as FileWatcher
+  rectangle "代码解析器" as CodeParser
+  rectangle "语义索引构建器" as IndexBuilder
+  database "向量数据库" as VectorDB
+}
+
+cloud "Claude API服务" as ClaudeAPI {
+  rectangle "Claude语言模型" as ClaudeModel
+}
+
+rectangle "资源管理" as ResourceManager {
+  rectangle "缓存系统" as CacheSystem
+  rectangle "性能优化器" as PerformanceOptimizer
+}
+
+' 组件关系
+' 用户界面与核心交互
+Editor --> QueryProcessor : 发送用户查询
+AIPanel <-- ResultProcessor : 显示AI响应
+Suggestions <-- ResultProcessor : 更新代码建议
+
+' 核心组件内部关系
+QueryProcessor --> ContextManager : 传递查询
+ContextManager --> PromptEngine : 提供上下文
+PromptEngine --> ClaudeModel : 发送优化提示
+ClaudeModel --> ResultProcessor : 返回生成结果
+
+' 索引系统与核心交互
+ContextManager <--> VectorDB : 检索相关代码片段
+FileWatcher --> IndexBuilder : 通知文件变更
+CodeParser --> IndexBuilder : 提供AST和符号信息
+IndexBuilder --> VectorDB : 更新索引
+
+' 资源管理
+CacheSystem <--> ResultProcessor : 缓存常见查询结果
+PerformanceOptimizer <--> ContextManager : 优化上下文大小
+PerformanceOptimizer <--> VectorDB : 优化检索性能
+
+' 主要流程
+note bottom of Editor
+  1. 用户在编辑器中提问或请求代码生成
+end note
+
+note bottom of QueryProcessor
+  2. 查询处理器分析用户意图
+     并确定需要的上下文信息
+end note
+
+note bottom of VectorDB
+  3. 向量数据库检索与用户
+     查询相关的代码片段
+end note
+
+note bottom of PromptEngine
+  4. 提示工程引擎组装用户查询、
+     当前编辑文件和检索结果为优化提示
+end note
+
+note bottom of ClaudeModel
+  5. Claude模型根据增强的上下文
+     生成更精准的代码或解答
+end note
+
+note bottom of ResultProcessor
+  6. 结果处理器格式化AI响应
+     并在界面中呈现
+end note
+
+@enduml 

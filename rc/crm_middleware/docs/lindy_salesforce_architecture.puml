@@ -1,0 +1,44 @@
+@startuml Lindy-Salesforce集成架构
+
+!define RECTANGLE class
+
+package "Lindy平台" {
+  RECTANGLE "用户界面" as UI
+  RECTANGLE "工作流编排器" as Orchestrator
+  RECTANGLE "集成连接器" as Connector
+  RECTANGLE "数据转换层" as DataTransformer
+}
+
+package "Salesforce" {
+  RECTANGLE "Salesforce API" as SF_API
+  RECTANGLE "数据库" as SF_DB
+  RECTANGLE "事件系统" as SF_Events
+}
+
+cloud "其他集成" {
+  RECTANGLE "Slack" as Slack
+  RECTANGLE "Gmail" as Gmail
+  RECTANGLE "其他工具..." as OtherTools
+}
+
+UI --> Orchestrator : 配置工作流
+Orchestrator --> Connector : 调用集成
+Connector --> DataTransformer : 转换数据格式
+DataTransformer --> SF_API : API调用
+
+SF_Events --> Connector : 事件通知(Webhook)
+SF_API --> SF_DB : 读写数据
+
+Orchestrator --> Slack : 触发通知
+Orchestrator --> Gmail : 触发邮件
+Orchestrator --> OtherTools : 触发其他动作
+
+note right of Connector
+  处理认证、请求和响应
+end note
+
+note right of DataTransformer
+  将Salesforce数据映射到工作流需要的格式
+end note
+
+@enduml 

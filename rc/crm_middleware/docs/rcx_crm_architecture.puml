@@ -1,0 +1,113 @@
+@startuml RingCentral-CRM集成架构
+
+!define RECTANGLE class
+
+skinparam rectangle {
+  BackgroundColor<<RingCentral>> LightBlue
+  BackgroundColor<<CRM>> LightGreen
+  BackgroundColor<<Common>> LightGray
+}
+
+rectangle "RingCentral平台" {
+  RECTANGLE "通信核心" as CommCore <<RingCentral>>
+  RECTANGLE "电话系统" as PhoneSystem <<RingCentral>>
+  RECTANGLE "消息系统" as MessageSystem <<RingCentral>>
+  RECTANGLE "视频会议" as VideoSystem <<RingCentral>>
+  RECTANGLE "分析引擎" as Analytics <<RingCentral>>
+  
+  rectangle "CRM集成层" {
+    RECTANGLE "CRM连接器管理器" as ConnectorManager <<RingCentral>>
+    
+    rectangle "预构建连接器" {
+      RECTANGLE "Salesforce连接器" as SFConnector <<RingCentral>>
+      RECTANGLE "Dynamics连接器" as DynamicsConnector <<RingCentral>>
+      RECTANGLE "Zendesk连接器" as ZendeskConnector <<RingCentral>>
+      RECTANGLE "HubSpot连接器" as HubSpotConnector <<RingCentral>>
+      RECTANGLE "Zoho连接器" as ZohoConnector <<RingCentral>>
+      RECTANGLE "HappyFox连接器" as HappyFoxConnector <<RingCentral>>
+    }
+    
+    RECTANGLE "API集成框架" as APIFramework <<RingCentral>>
+    RECTANGLE "认证管理" as AuthManager <<RingCentral>>
+    RECTANGLE "数据同步引擎" as SyncEngine <<RingCentral>>
+  }
+}
+
+rectangle "CRM系统" {
+  RECTANGLE "Salesforce" as Salesforce <<CRM>>
+  RECTANGLE "Microsoft Dynamics" as Dynamics <<CRM>>
+  RECTANGLE "Zendesk" as Zendesk <<CRM>>
+  RECTANGLE "HubSpot" as HubSpot <<CRM>>
+  RECTANGLE "Zoho CRM" as Zoho <<CRM>>
+  RECTANGLE "HappyFox" as HappyFox <<CRM>>
+}
+
+rectangle "用户界面" {
+  RECTANGLE "集成桌面应用" as Desktop <<Common>>
+  RECTANGLE "网页应用" as Web <<Common>>
+  RECTANGLE "移动应用" as Mobile <<Common>>
+}
+
+' 连接核心系统
+PhoneSystem --> CommCore
+MessageSystem --> CommCore
+VideoSystem --> CommCore
+CommCore --> Analytics
+
+' 连接器管理
+ConnectorManager --> SFConnector
+ConnectorManager --> DynamicsConnector
+ConnectorManager --> ZendeskConnector
+ConnectorManager --> HubSpotConnector
+ConnectorManager --> ZohoConnector
+ConnectorManager --> HappyFoxConnector
+ConnectorManager --> APIFramework
+ConnectorManager --> AuthManager
+ConnectorManager --> SyncEngine
+
+' CRM系统连接
+SFConnector --> Salesforce
+DynamicsConnector --> Dynamics
+ZendeskConnector --> Zendesk
+HubSpotConnector --> HubSpot
+ZohoConnector --> Zoho
+HappyFoxConnector --> HappyFox
+APIFramework ..> Salesforce : 自定义集成
+APIFramework ..> Dynamics : 自定义集成
+APIFramework ..> Zendesk : 自定义集成
+APIFramework ..> HubSpot : 自定义集成
+APIFramework ..> Zoho : 自定义集成
+APIFramework ..> HappyFox : 自定义集成
+
+' 用户界面连接
+CommCore --> Desktop
+CommCore --> Web
+CommCore --> Mobile
+ConnectorManager --> Desktop
+ConnectorManager --> Web
+ConnectorManager --> Mobile
+
+' 数据流
+SyncEngine <--> Salesforce : 双向数据同步
+SyncEngine <--> Dynamics : 双向数据同步
+SyncEngine <--> Zendesk : 双向数据同步
+SyncEngine <--> HubSpot : 双向数据同步
+SyncEngine <--> Zoho : 双向数据同步
+SyncEngine <--> HappyFox : 双向数据同步
+
+note right of ConnectorManager
+  管理所有CRM集成连接器
+  提供统一接口和配置
+end note
+
+note right of SyncEngine
+  确保CRM系统与通信记录
+  保持实时同步
+end note
+
+note bottom of APIFramework
+  支持自定义集成
+  和扩展功能
+end note
+
+@enduml 

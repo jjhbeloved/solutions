@@ -1,0 +1,118 @@
+@startuml CRM中间件认证统一机制
+
+!define RECTANGLE class
+
+' 定义颜色
+!define CLIENT_COLOR #FFEBCD
+!define MIDDLEWARE_COLOR #E0FFFF
+!define AUTH_COLOR #D8BFD8
+!define CRM_COLOR #98FB98
+!define SECURITY_COLOR #FFB6C1
+
+' 定义模块
+skinparam componentStyle rectangle
+skinparam package {
+  BackgroundColor white
+  BorderColor black
+}
+
+' 客户端和应用系统
+package "客户端应用" as Client {
+  [应用前端] as Frontend CLIENT_COLOR
+  [应用后端] as Backend CLIENT_COLOR
+}
+
+' 中间件架构
+package "CRM中间件" as Middleware {
+  ' 统一认证层
+  package "认证统一机制" as AuthModule AUTH_COLOR {
+    [认证统一接口] as AuthInterface
+    
+    package "认证适配层" as AuthAdapter {
+      [OAuth2.0适配器] as OAuthAdapter
+      [API Key适配器] as ApiKeyAdapter
+      [基本认证适配器] as BasicAuthAdapter
+      [SAML适配器] as SamlAdapter
+    }
+    
+    [凭证安全存储] as CredentialStorage SECURITY_COLOR
+    [令牌生命周期管理] as TokenManager
+    [会话管理] as SessionManager
+  }
+  
+  ' 中间件其他组件
+  [统一API层] as APILayer MIDDLEWARE_COLOR
+  [CRM适配器框架] as AdapterFramework MIDDLEWARE_COLOR
+}
+
+' 外部认证服务
+package "认证服务" as AuthService {
+  [Keycloak] as Keycloak AUTH_COLOR
+  [其他IAM解决方案] as OtherIAM AUTH_COLOR
+}
+
+' CRM系统
+package "CRM系统" as CRMSystems {
+  [Salesforce\n(OAuth 2.0)] as Salesforce CRM_COLOR
+  [Microsoft Dynamics\n(OAuth 2.0/Azure AD)] as MSDynamics CRM_COLOR
+  [HubSpot\n(API Key/OAuth)] as HubSpot CRM_COLOR
+  [Zoho\n(OAuth 2.0)] as Zoho CRM_COLOR
+  [其他CRM\n(多种认证方式)] as OtherCRM CRM_COLOR
+}
+
+' 硬件安全模块
+[硬件安全模块\n(HSM)] as HSM SECURITY_COLOR
+
+' 关系连接
+' 客户端到中间件
+Frontend --> Backend : 用户操作
+Backend --> AuthInterface : 认证请求
+Backend --> APILayer : API请求(带认证令牌)
+
+' 认证模块内部关系
+AuthInterface --> AuthAdapter : 路由到合适的认证适配器
+AuthInterface --> TokenManager : 令牌获取/验证
+TokenManager --> CredentialStorage : 安全存取凭证
+CredentialStorage --> HSM : 加密保护
+AuthInterface --> SessionManager : 会话创建/维护
+OAuthAdapter --> Keycloak : 可选集成
+OAuthAdapter -d-> Salesforce : OAuth流程
+OAuthAdapter -d-> MSDynamics : OAuth/Azure AD流程
+ApiKeyAdapter -d-> HubSpot : API Key认证
+OAuthAdapter -d-> Zoho : OAuth流程
+BasicAuthAdapter -d-> OtherCRM : 基本认证
+SamlAdapter -d-> OtherCRM : SAML认证
+
+' API层与适配器框架
+APILayer --> AdapterFramework : 授权API请求
+AdapterFramework --> CRMSystems : 统一访问接口
+
+' 认证服务关系
+TokenManager ..> Keycloak : 可选的令牌管理
+TokenManager ..> OtherIAM : 集成其他认证服务
+
+' 注释说明
+note left of AuthAdapter
+  根据目标CRM自动选择
+  适合的认证方式
+end note
+
+note right of TokenManager
+  处理令牌刷新、缓存
+  和异步预刷新
+end note
+
+note bottom of CredentialStorage
+  加密存储、密钥轮换
+  保障凭证安全
+end note
+
+' 认证模式
+note bottom of Middleware
+  <b>认证模式:</b>
+  1. 代理模式: 中间件代表用户完成认证
+  2. 联合认证: 用户与CRM直接完成认证
+  3. 凭证转换: 统一凭证格式转换为CRM特定格式
+end note
+
+@enduml 

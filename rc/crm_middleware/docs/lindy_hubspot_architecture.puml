@@ -1,0 +1,45 @@
+@startuml Lindy-HubSpot集成架构
+
+!define RECTANGLE class
+
+package "Lindy平台" {
+  RECTANGLE "用户界面" as UI
+  RECTANGLE "工作流编排器" as Orchestrator
+  RECTANGLE "HubSpot连接器" as Connector
+  RECTANGLE "数据转换层" as DataTransformer
+}
+
+package "HubSpot" {
+  RECTANGLE "HubSpot API" as HS_API
+  RECTANGLE "联系人数据库" as HS_Contacts
+  RECTANGLE "公司数据库" as HS_Companies
+}
+
+cloud "其他集成" {
+  RECTANGLE "Slack" as Slack
+  RECTANGLE "Gmail" as Gmail
+  RECTANGLE "其他工具..." as OtherTools
+}
+
+UI --> Orchestrator : 配置工作流
+Orchestrator --> Connector : 调用集成
+Connector --> DataTransformer : 转换数据格式
+DataTransformer --> HS_API : API调用
+
+HS_API --> HS_Contacts : 联系人管理
+HS_API --> HS_Companies : 公司管理
+
+Orchestrator --> Slack : 触发通知
+Orchestrator --> Gmail : 触发邮件
+Orchestrator --> OtherTools : 触发其他动作
+
+note right of Connector
+  处理OAuth认证和API请求
+end note
+
+note right of DataTransformer
+  将HubSpot联系人数据
+  映射到工作流变量
+end note
+
+@enduml 

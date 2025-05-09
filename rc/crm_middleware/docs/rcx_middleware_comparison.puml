@@ -1,0 +1,96 @@
+@startuml RingCentral与Lindy中间件比较
+
+skinparam {
+  BackgroundColor White
+  ArrowColor Black
+  BorderColor Black
+}
+
+skinparam rectangle {
+  BackgroundColor<<RingCentral>> LightBlue
+  BackgroundColor<<Lindy>> LightGreen
+  BackgroundColor<<Common>> LightGray
+}
+
+rectangle "中间件共性" as Common <<Common>> {
+  rectangle "CRM连接层" as CommonConnector <<Common>>
+  rectangle "认证管理" as CommonAuth <<Common>>
+  rectangle "数据同步" as CommonSync <<Common>>
+  rectangle "多CRM支持" as CommonMultiCRM <<Common>>
+}
+
+rectangle "RingCentral CRM中间件" as RingCentral <<RingCentral>> {
+  rectangle "通信中心设计" as RCComm <<RingCentral>>
+  rectangle "预构建连接器" as RCConnector <<RingCentral>>
+  rectangle "实时通信API" as RCAPI <<RingCentral>>
+  rectangle "通信数据记录" as RCData <<RingCentral>>
+  rectangle "360°客户视图" as RC360View <<RingCentral>>
+  rectangle "多渠道通信" as RCMultiChannel <<RingCentral>>
+}
+
+rectangle "Lindy.ai CRM中间件" as Lindy <<Lindy>> {
+  rectangle "工作流中心设计" as LindyWF <<Lindy>>
+  rectangle "触发器-动作模式" as LindyTrigger <<Lindy>>
+  rectangle "AI增强工作流" as LindyAI <<Lindy>>
+  rectangle "事件驱动架构" as LindyEvent <<Lindy>>
+  rectangle "无代码配置界面" as LindyNoCode <<Lindy>>
+  rectangle "多系统工作流" as LindyMultiSystem <<Lindy>>
+}
+
+' 应用场景
+cloud "应用场景" {
+  [客户服务] as ServiceScenario
+  [销售支持] as SalesScenario
+  [市场营销] as MarketingScenario
+  [团队协作] as TeamScenario
+  [工作流自动化] as WorkflowScenario
+}
+
+' 连接场景
+RCComm --> ServiceScenario : 非常适合
+RCComm --> SalesScenario : 非常适合
+RCComm --> TeamScenario : 适合
+RCMultiChannel --> ServiceScenario : 强化
+RCAPI --> SalesScenario : 支持
+
+LindyWF --> WorkflowScenario : 非常适合
+LindyTrigger --> MarketingScenario : 非常适合
+LindyEvent --> WorkflowScenario : 强化
+LindyAI --> MarketingScenario : 增强
+LindyNoCode --> WorkflowScenario : 降低门槛
+
+' 互联图表
+CommonConnector <-- RCConnector
+CommonConnector <-- LindyTrigger
+CommonAuth <-- RCAPI
+CommonAuth <-- LindyEvent
+CommonSync <-- RCData
+CommonSync <-- LindyEvent
+CommonMultiCRM <-- RCConnector
+CommonMultiCRM <-- LindyMultiSystem
+
+' 差异标注
+note top of RingCentral
+  通信导向CRM中间件
+  专注于实时客户互动
+  支持多种通信渠道
+end note
+
+note top of Lindy
+  工作流导向CRM中间件
+  专注于业务流程自动化
+  事件驱动的触发机制
+end note
+
+note bottom of Common
+  两种中间件的共同特性:
+  - 标准化CRM连接
+  - 统一认证机制
+  - 数据同步能力
+  - 支持多种CRM系统
+end note
+
+header "CRM中间件比较: RingCentral vs Lindy.ai"
+footer "两种不同中间件设计思路的对比"
+
+@enduml 

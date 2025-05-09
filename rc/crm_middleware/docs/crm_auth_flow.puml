@@ -1,0 +1,99 @@
+@startuml CRM中间件认证流程
+
+!theme plain
+skinparam handwritten false
+
+' 背景色
+skinparam sequence {
+    ParticipantBackgroundColor #E0FFFF
+    ActorBackgroundColor #FFEBCD
+    BoxBackgroundColor #EDEDED
+    BoxBorderColor #D0D0D0
+}
+
+actor 用户 as User 
+participant "客户端应用" as ClientApp
+box "CRM中间件" #E0FFFF
+participant "认证统一接口" as AuthInterface
+participant "认证适配层" as AuthAdapter
+participant "令牌管理器" as TokenManager
+participant "凭证安全存储" as CredentialStore
+end box
+participant "CRM系统" as CRMSystem
+
+' 三种认证模式的序列图
+
+== 模式1: 代理模式 ==
+
+note over User, CRMSystem
+  <b>代理模式</b>: 中间件代表用户向CRM系统认证
+  优点: 用户体验简单，无需了解CRM差异
+  挑战: 需安全存储凭证
+end note
+
+User -> ClientApp: 1. 登录应用
+ClientApp -> AuthInterface: 2. 请求访问CRM (用户凭证)
+AuthInterface -> AuthAdapter: 3. 选择适配器(基于CRM类型)
+AuthAdapter -> CredentialStore: 4. 获取存储的凭证
+CredentialStore --> AuthAdapter: 5. 返回安全存储的凭证
+AuthAdapter -> CRMSystem: 6. 代表用户认证(使用存储凭证)
+CRMSystem --> AuthAdapter: 7. 返回认证令牌
+AuthAdapter -> TokenManager: 8. 存储并管理令牌
+TokenManager --> AuthInterface: 9. 返回会话标识符
+AuthInterface --> ClientApp: 10. 返回认证成功和会话信息
+ClientApp -> User: 11. 显示已连接CRM界面
+
+note right of TokenManager #E0E0E0
+  令牌生命周期管理:
+  - 定时刷新令牌
+  - 缓存优化
+  - 处理过期
+end note
+
+== 模式2: 联合认证模式 ==
+
+note over User, CRMSystem
+  <b>联合认证模式</b>: 用户直接与CRM交互完成认证
+  优点: 更安全，无需存储用户凭证
+  挑战: 需处理重定向流程
+end note
+
+User -> ClientApp: 1. 请求连接CRM
+ClientApp -> AuthInterface: 2. 发起认证流程
+AuthInterface -> AuthAdapter: 3. 获取认证URL
+AuthAdapter --> AuthInterface: 4. 返回CRM认证页面URL
+AuthInterface --> ClientApp: 5. 重定向到CRM认证页面
+ClientApp -> User: 6. 展示CRM登录界面
+User -> CRMSystem: 7. 用户直接登录CRM
+CRMSystem -> User: 8. 要求授权访问
+User -> CRMSystem: 9. 同意授权
+CRMSystem --> ClientApp: 10. 重定向回应用(带授权码)
+ClientApp -> AuthInterface: 11. 交换授权码获取令牌
+AuthInterface -> AuthAdapter: 12. 处理授权码
+AuthAdapter -> CRMSystem: 13. 交换授权码获取访问令牌
+CRMSystem --> AuthAdapter: 14. 返回访问令牌
+AuthAdapter -> TokenManager: 15. 存储令牌
+TokenManager --> AuthInterface: 16. 返回会话标识符
+AuthInterface --> ClientApp: 17. 返回认证成功
+ClientApp -> User: 18. 显示连接成功
+
+== 模式3: 凭证转换模式 ==
+
+note over User, CRMSystem
+  <b>凭证转换模式</b>: 统一凭证格式转为CRM特定格式
+  优点: 实现简单，对CRM系统透明
+  挑战: 可能需存储敏感信息
+end note
+
+User -> ClientApp: 1. 提供统一格式凭证
+ClientApp -> AuthInterface: 2. 请求认证(统一格式)
+AuthInterface -> AuthAdapter: 3. 识别CRM类型并路由
+AuthAdapter -> AuthAdapter: 4. 转换为CRM特定格式
+AuthAdapter -> CRMSystem: 5. 使用转换后的凭证认证
+CRMSystem --> AuthAdapter: 6. 返回CRM特定令牌
+AuthAdapter -> TokenManager: 7. 存储并转换令牌
+TokenManager --> AuthInterface: 8. 返回统一格式令牌
+AuthInterface --> ClientApp: 9. 返回标准化认证结果
+ClientApp -> User: 10. 显示认证成功
+
+@enduml 

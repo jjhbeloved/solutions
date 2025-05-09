@@ -1,0 +1,84 @@
+@startuml Lindy-CRM系统集成比较
+
+!define RECTANGLE class
+
+skinparam rectangle {
+  BackgroundColor<<Salesforce>> LightBlue
+  BackgroundColor<<HubSpot>> LightGreen
+  BackgroundColor<<Common>> LightGray
+}
+
+rectangle "Lindy平台" {
+  RECTANGLE "工作流编排" as Orchestrator <<Common>>
+  
+  rectangle "Salesforce集成" {
+    RECTANGLE "Salesforce连接器" as SF_Connector <<Salesforce>>
+    RECTANGLE "事件监听器" as SF_EventListener <<Salesforce>>
+    RECTANGLE "多对象处理器" as SF_ObjectProcessor <<Salesforce>>
+  }
+  
+  rectangle "HubSpot集成" {
+    RECTANGLE "HubSpot连接器" as HS_Connector <<HubSpot>>
+    RECTANGLE "联系人处理器" as HS_ContactProcessor <<HubSpot>>
+  }
+  
+  RECTANGLE "数据转换层" as DataTransformer <<Common>>
+  RECTANGLE "认证管理器" as AuthManager <<Common>>
+}
+
+rectangle "CRM系统" {
+  rectangle "Salesforce" {
+    RECTANGLE "Salesforce API" as SF_API <<Salesforce>>
+    RECTANGLE "Webhook事件" as SF_Events <<Salesforce>>
+    RECTANGLE "潜在客户" as SF_Leads <<Salesforce>>
+    RECTANGLE "联系人" as SF_Contacts <<Salesforce>>
+    RECTANGLE "机会" as SF_Opportunities <<Salesforce>>
+  }
+  
+  rectangle "HubSpot" {
+    RECTANGLE "HubSpot API" as HS_API <<HubSpot>>
+    RECTANGLE "联系人" as HS_Contacts <<HubSpot>>
+    RECTANGLE "公司" as HS_Companies <<HubSpot>>
+  }
+}
+
+' Salesforce连接
+Orchestrator --> SF_Connector
+SF_Connector --> SF_EventListener
+SF_Connector --> SF_ObjectProcessor
+SF_EventListener --> SF_Events
+SF_ObjectProcessor --> SF_API
+SF_API --> SF_Leads
+SF_API --> SF_Contacts
+SF_API --> SF_Opportunities
+
+' HubSpot连接
+Orchestrator --> HS_Connector
+HS_Connector --> HS_ContactProcessor
+HS_ContactProcessor --> HS_API
+HS_API --> HS_Contacts
+HS_API --> HS_Companies
+
+' 共享组件连接
+SF_Connector --> DataTransformer
+HS_Connector --> DataTransformer
+SF_Connector --> AuthManager
+HS_Connector --> AuthManager
+
+note bottom of SF_EventListener
+  基于事件触发工作流
+end note
+
+note bottom of HS_ContactProcessor
+  专注于联系人操作
+end note
+
+note bottom of DataTransformer
+  统一的数据映射层
+end note
+
+note bottom of AuthManager
+  统一的OAuth认证
+end note
+
+@enduml 

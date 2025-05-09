@@ -1,0 +1,174 @@
+@startuml CRM部署架构
+
+!define CLOUD class
+!define DATABASE class
+!define RECTANGLE class
+
+skinparam dpi 100
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 14
+skinparam componentStyle rectangle
+skinparam backgroundColor white
+
+skinparam node {
+    backgroundColor #E0FFFF
+    borderColor #0096FF
+    fontColor #333333
+}
+
+skinparam database {
+    backgroundColor #FFFAF0
+    borderColor #FFD700
+    fontColor #333333
+}
+
+skinparam cloud {
+    backgroundColor #F0F8FF
+    borderColor #4682B4
+    fontColor #333333
+}
+
+skinparam rectangle {
+    backgroundColor #FFFFFF
+    borderColor #999999
+    fontColor #333333
+}
+
+title CRM中间件部署架构
+
+' 外部系统/用户
+rectangle "内部系统" as InternalSystems {
+    rectangle "电话系统" as PhoneSystem
+    rectangle "管理平台" as AdminPortal
+    rectangle "监控系统" as MonitorSystem
+}
+
+' 负载均衡器
+node "负载均衡" as LoadBalancer {
+    rectangle "NGINX" as NGINX
+    rectangle "API网关" as APIGateway
+}
+
+' Kubernetes集群
+node "Kubernetes集群" {
+    node "业务逻辑节点池" as BusinessNodePool {
+        rectangle "API服务" as APIService {
+            [API容器1]
+            [API容器2]
+            [API容器...]
+        }
+        
+        rectangle "工作流引擎" as WorkflowEngine {
+            [工作流容器1]
+            [工作流容器2]
+            [工作流容器...]
+        }
+        
+        rectangle "数据转换服务" as DataTransformer {
+            [转换服务容器1]
+            [转换服务容器2]
+        }
+    }
+    
+    node "适配器节点池" as AdapterNodePool {
+        rectangle "Salesforce适配器" as SalesforceAdapter {
+            [SF适配器1]
+            [SF适配器2]
+        }
+        
+        rectangle "MS Dynamics适配器" as DynamicsAdapter {
+            [Dynamics适配器1]
+            [Dynamics适配器2]
+        }
+        
+        rectangle "其他CRM适配器" as OtherAdapters {
+            [其他适配器...]
+        }
+    }
+    
+    node "基础服务节点池" as InfraNodePool {
+        rectangle "监控服务" as MonitoringService {
+            [Prometheus]
+            [Grafana]
+        }
+        
+        rectangle "日志服务" as LoggingService {
+            [ElasticSearch]
+            [Kibana]
+            [Logstash]
+        }
+        
+        rectangle "消息队列" as MessageQueue {
+            [Kafka]
+        }
+    }
+}
+
+' 数据库和缓存
+node "数据服务" as DataServices {
+    database "配置数据库" as ConfigDB {
+        [PostgeSQL]
+    }
+    
+    database "状态数据库" as StateDB {
+        [MongoDB]
+    }
+    
+    database "缓存服务" as CacheService {
+        [Redis]
+    }
+}
+
+' 外部CRM系统
+cloud "外部CRM系统" as ExternalCRMs {
+    [Salesforce]
+    [MS Dynamics]
+    [HubSpot]
+    [Zoho]
+    [其他CRM...]
+}
+
+' 连接关系
+InternalSystems --> LoadBalancer
+LoadBalancer --> BusinessNodePool
+
+BusinessNodePool --> AdapterNodePool
+BusinessNodePool <--> DataServices
+BusinessNodePool <--> InfraNodePool
+AdapterNodePool <--> InfraNodePool
+AdapterNodePool --> ExternalCRMs
+
+' 详细关系
+PhoneSystem --> APIGateway
+AdminPortal --> APIGateway
+MonitorSystem --> MonitoringService
+
+APIService --> WorkflowEngine
+WorkflowEngine --> DataTransformer
+DataTransformer --> AdapterNodePool
+
+WorkflowEngine --> MessageQueue
+APIService --> MessageQueue
+AdapterNodePool <-- MessageQueue
+
+SalesforceAdapter --> Salesforce
+DynamicsAdapter --> [MS Dynamics]
+
+' 多环境和灾备说明
+note as MultiEnvironmentNote
+  多环境部署策略:
+  1. 开发环境 - 单节点部署
+  2. 测试环境 - 轻量集群
+  3. 预生产环境 - 与生产配置相同
+  4. 生产环境 - 完整高可用集群
+end note
+
+note as DisasterRecoveryNote
+  灾备和高可用策略:
+  1. 多区域部署 - 主区域和备份区域
+  2. 数据库同步复制
+  3. 自动故障转移机制
+  4. 定期灾备演练
+end note
+
+@enduml 

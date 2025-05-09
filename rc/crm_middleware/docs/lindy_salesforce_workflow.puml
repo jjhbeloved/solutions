@@ -1,0 +1,33 @@
+@startuml Lindy-Salesforce工作流程
+
+start
+partition "触发阶段" {
+  :Salesforce中发生事件;
+  note right: 如记录更新、新建潜在客户等
+  :事件通知发送到Lindy;
+  :Lindy识别对应的触发器;
+}
+
+partition "工作流执行" {
+  :加载工作流配置;
+  if (是否需要更多数据?) then (是)
+    :从Salesforce获取额外数据;
+  else (否)
+  endif
+  :准备执行上下文;
+}
+
+partition "动作执行" {
+  :执行配置的动作;
+  fork
+    :更新Salesforce数据;
+  fork again
+    :触发其他系统操作;
+    note right: 如发送Slack通知、创建任务等
+  end fork
+}
+
+:记录工作流执行结果;
+stop
+
+@enduml 

@@ -1,0 +1,44 @@
+@startuml Lindy-HubSpot动作流程
+
+skinparam activityBackgroundColor LightBlue
+skinparam activityBorderColor DarkBlue
+
+|用户|
+start
+:选择HubSpot动作;
+
+|Lindy平台|
+:准备API调用参数;
+
+split
+  :创建联系人|
+  :准备联系人数据;
+  :调用HubSpot创建联系人API;
+split again
+  :更新联系人|
+  :获取联系人ID;
+  :准备更新字段;
+  :调用HubSpot更新联系人API;
+split again
+  :搜索联系人|
+  :准备搜索条件;
+  :调用HubSpot搜索API;
+split again
+  :通过邮件获取联系人|
+  :提取邮件地址;
+  :调用HubSpot联系人查询API;
+end split
+
+|HubSpot|
+:处理API请求;
+:返回结果;
+
+|Lindy平台|
+:解析API响应;
+:将结果映射到工作流变量;
+
+|用户|
+:继续执行工作流;
+stop
+
+@enduml 

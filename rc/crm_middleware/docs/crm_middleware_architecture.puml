@@ -1,0 +1,116 @@
+@startuml CRM中间件架构图
+
+!define RECTANGLE class
+
+skinparam componentStyle rectangle
+skinparam monochrome false
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 14
+skinparam componentStyle uml2
+
+skinparam component {
+  BackgroundColor #f8f8f8
+  BorderColor #888888
+  ArrowColor #555555
+}
+
+title CRM中间件系统架构
+
+package "电话系统" as PhoneSystem {
+  [呼叫中心] as CallCenter
+  [录音系统] as RecordingSystem
+  [客户数据] as CustomerData
+}
+
+package "CRM中间件" as CRMMiddleware {
+  package "API网关层" as APIGateway {
+    [REST API] as RestAPI
+    [GraphQL API] as GraphQLAPI
+    [认证授权] as Auth
+    [速率限制] as RateLimiter
+  }
+  
+  package "业务逻辑层" as BusinessLogic {
+    [工作流引擎] as WorkflowEngine
+    [数据转换引擎] as DataTransformer
+    [业务规则引擎] as RuleEngine
+    [队列管理] as QueueManager
+  }
+  
+  package "适配器层" as AdapterLayer {
+    [适配器管理] as AdapterManager
+    [Salesforce适配器] as SalesforceAdapter
+    [Microsoft Dynamics适配器] as DynamicsAdapter
+    [HubSpot适配器] as HubSpotAdapter
+    [Zoho适配器] as ZohoAdapter
+    [通用REST适配器] as GenericRESTAdapter
+    [自定义适配器] as CustomAdapter
+  }
+  
+  package "监控与管理层" as MonitoringLayer {
+    [管理控制台] as AdminConsole
+    [监控系统] as MonitoringSystem
+    [日志分析] as LogAnalysis
+    [告警系统] as AlertSystem
+  }
+  
+  package "数据层" as DataLayer {
+    database "配置数据" as ConfigDB
+    database "状态数据" as StateDB
+    database "日志数据" as LogDB
+  }
+}
+
+cloud "CRM系统" as CRMSystems {
+  [Salesforce] as Salesforce
+  [Microsoft Dynamics] as MSDynamics
+  [HubSpot] as HubSpot
+  [Zoho CRM] as ZohoCRM
+  [其他CRM...] as OtherCRMs
+}
+
+' 连接关系
+CallCenter --> RestAPI
+RecordingSystem --> RestAPI
+CustomerData --> GraphQLAPI
+
+RestAPI --> Auth
+GraphQLAPI --> Auth
+Auth --> RateLimiter
+
+RateLimiter --> WorkflowEngine
+WorkflowEngine --> DataTransformer
+WorkflowEngine --> RuleEngine
+WorkflowEngine --> QueueManager
+
+DataTransformer --> AdapterManager
+RuleEngine --> AdapterManager
+QueueManager --> AdapterManager
+
+AdapterManager --> SalesforceAdapter
+AdapterManager --> DynamicsAdapter
+AdapterManager --> HubSpotAdapter
+AdapterManager --> ZohoAdapter
+AdapterManager --> GenericRESTAdapter
+AdapterManager --> CustomAdapter
+
+SalesforceAdapter --> Salesforce
+DynamicsAdapter --> MSDynamics
+HubSpotAdapter --> HubSpot
+ZohoAdapter --> ZohoCRM
+GenericRESTAdapter --> OtherCRMs
+CustomAdapter --> OtherCRMs
+
+MonitoringSystem --> AdapterManager
+MonitoringSystem --> WorkflowEngine
+MonitoringSystem --> APIGateway
+AlertSystem --> MonitoringSystem
+AdminConsole --> MonitoringSystem
+AdminConsole --> LogAnalysis
+
+BusinessLogic --> ConfigDB
+BusinessLogic --> StateDB
+MonitoringLayer --> LogDB
+
+@enduml 

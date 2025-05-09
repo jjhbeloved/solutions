@@ -1,0 +1,116 @@
+@startuml RingCentral-集成框架VS纯中间件
+
+skinparam {
+  BackgroundColor White
+  ArrowColor Black
+  BorderColor Black
+}
+
+package "纯中间件架构" {
+  [统一抽象层] as AbstractLayer
+  [标准化数据模型] as DataModel
+  [通用连接器引擎] as ConnectorEngine
+  [插件管理系统] as PluginSystem
+  
+  note bottom of AbstractLayer
+    完全抽象CRM差异
+    用户无感知切换
+  end note
+  
+  package "CRM连接插件" {
+    [CRM A插件] as PluginA
+    [CRM B插件] as PluginB
+    [CRM C插件] as PluginC
+  }
+  
+  package "CRM系统" as PureCRMs {
+    [CRM系统A] as PureCrmA
+    [CRM系统B] as PureCrmB
+    [CRM系统C] as PureCrmC
+  }
+  
+  AbstractLayer --> ConnectorEngine
+  ConnectorEngine --> PluginSystem
+  PluginSystem --> PluginA
+  PluginSystem --> PluginB
+  PluginSystem --> PluginC
+  
+  PluginA --> PureCrmA
+  PluginB --> PureCrmB
+  PluginC --> PureCrmC
+}
+
+package "RingCentral集成框架" {
+  [核心通信功能] as CoreComm
+  
+  package "独立连接器" {
+    [Salesforce连接器] as SFConnector
+    [HubSpot连接器] as HSConnector
+    [Zendesk连接器] as ZDConnector
+    [其他CRM连接器...] as OtherConnectors
+  }
+  
+  package "CRM系统" as RCCRMs {
+    [Salesforce] as Salesforce
+    [HubSpot] as HubSpot
+    [Zendesk] as Zendesk
+    [其他CRM...] as OtherCRMs
+  }
+  
+  package "用户界面" {
+    [For Salesforce UI] as SFUI
+    [For HubSpot UI] as HSUI
+    [For Zendesk UI] as ZDUI
+  }
+  
+  CoreComm --> SFConnector
+  CoreComm --> HSConnector
+  CoreComm --> ZDConnector
+  CoreComm --> OtherConnectors
+  
+  SFConnector --> Salesforce
+  HSConnector --> HubSpot
+  ZDConnector --> Zendesk
+  OtherConnectors --> OtherCRMs
+  
+  SFConnector --> SFUI
+  HSConnector --> HSUI
+  ZDConnector --> ZDUI
+  
+  note bottom of CoreComm
+    核心通信功能一致
+    但连接器相互独立
+  end note
+}
+
+cloud "新增CRM系统X" as NewCRM
+
+note right of NewCRM
+  纯中间件：只需添加新插件
+  RC框架：需完整开发新连接器
+end note
+
+rectangle "纯中间件 - 新增流程" {
+  [开发新插件] as NewPlugin
+  [注册到插件系统] as RegisterPlugin
+  [自动继承全部功能] as InheritFeatures
+  
+  NewPlugin -right-> RegisterPlugin
+  RegisterPlugin -right-> InheritFeatures
+}
+
+rectangle "RC框架 - 新增流程" {
+  [设计新连接器] as DesignConnector
+  [实现CRM特定API适配] as APIImplement
+  [开发特定UI组件] as UIImplement
+  [功能测试和发布] as ReleaseConnector
+  
+  DesignConnector -right-> APIImplement
+  APIImplement -right-> UIImplement
+  UIImplement -right-> ReleaseConnector
+}
+
+NewCRM ..> NewPlugin : 纯中间件路径
+NewCRM ..> DesignConnector : RC框架路径
+
+@enduml 

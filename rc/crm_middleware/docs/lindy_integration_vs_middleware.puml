@@ -1,0 +1,124 @@
+@startuml Lindy集成框架VS纯中间件
+
+skinparam {
+  BackgroundColor White
+  ArrowColor Black
+  BorderColor Black
+}
+
+!define FRAMEWORK #LightYellow
+!define MIDDLEWARE #LightBlue
+!define CRM #LightGreen
+
+' 当前Lindy集成框架
+rectangle "当前: Lindy集成框架" as CurrentLindy FRAMEWORK {
+  rectangle "核心工作流引擎" as WorkflowEngine FRAMEWORK
+  
+  rectangle "CRM特定触发器和动作" {
+    [Salesforce触发器] as SF_Triggers FRAMEWORK
+    [Salesforce动作] as SF_Actions FRAMEWORK
+    [HubSpot触发器] as HS_Triggers FRAMEWORK
+    [HubSpot动作] as HS_Actions FRAMEWORK
+  }
+  
+  rectangle "认证与API访问" {
+    [Salesforce认证] as SF_Auth FRAMEWORK
+    [HubSpot认证] as HS_Auth FRAMEWORK
+  }
+}
+
+' 理想中的纯中间件
+rectangle "理想: 纯CRM中间件" as IdealMiddleware MIDDLEWARE {
+  rectangle "统一抽象层" as AbstractLayer MIDDLEWARE
+  rectangle "统一对象模型" as UnifiedModel MIDDLEWARE
+  rectangle "统一事件系统" as UnifiedEvents MIDDLEWARE
+  rectangle "统一操作集" as UnifiedOps MIDDLEWARE
+  
+  rectangle "CRM适配器插件" {
+    [Salesforce适配器] as SF_Adapter MIDDLEWARE
+    [HubSpot适配器] as HS_Adapter MIDDLEWARE
+    [插件扩展接口] as PluginInterface MIDDLEWARE
+  }
+  
+  rectangle "统一认证系统" as AuthSystem MIDDLEWARE
+}
+
+' CRM系统
+rectangle "CRM系统" {
+  [Salesforce] as Salesforce CRM
+  [HubSpot] as HubSpot CRM
+  [新CRM系统] as NewCRM CRM
+}
+
+' 连接当前框架
+WorkflowEngine --> SF_Triggers
+WorkflowEngine --> SF_Actions
+WorkflowEngine --> HS_Triggers
+WorkflowEngine --> HS_Actions
+
+SF_Triggers --> SF_Auth
+SF_Actions --> SF_Auth
+HS_Triggers --> HS_Auth
+HS_Actions --> HS_Auth
+
+SF_Auth --> Salesforce
+HS_Auth --> HubSpot
+
+' 连接理想中间件
+AbstractLayer --> UnifiedModel
+AbstractLayer --> UnifiedEvents
+AbstractLayer --> UnifiedOps
+AbstractLayer --> AuthSystem
+
+UnifiedModel --> SF_Adapter
+UnifiedEvents --> SF_Adapter
+UnifiedOps --> SF_Adapter
+AuthSystem --> SF_Adapter
+
+UnifiedModel --> HS_Adapter
+UnifiedEvents --> HS_Adapter
+UnifiedOps --> HS_Adapter
+AuthSystem --> HS_Adapter
+
+UnifiedModel --> PluginInterface
+UnifiedEvents --> PluginInterface
+UnifiedOps --> PluginInterface
+AuthSystem --> PluginInterface
+
+SF_Adapter --> Salesforce
+HS_Adapter --> HubSpot
+PluginInterface ..> NewCRM : 可扩展
+
+' 新CRM接入比较
+cloud "新CRM系统接入" as NewCRMIntegration
+note bottom of NewCRMIntegration
+  当前框架: 需开发新触发器和动作
+  理想中间件: 只需实现适配器插件
+end note
+
+' 用户体验比较
+rectangle "用户体验比较" {
+  card "当前框架:\n- 需了解不同CRM特定概念\n- 切换CRM时工作流需要重新配置\n- 功能因CRM而异" as CurrentUX FRAMEWORK
+  card "理想中间件:\n- 统一概念和术语\n- 无感知CRM切换\n- 一致的功能体验" as IdealUX MIDDLEWARE
+}
+
+' 复杂度和灵活性比较
+rectangle "复杂度和灵活性" {
+  card "当前框架:\n- 实现复杂度较低\n- 可充分利用CRM特性\n- 更快速集成" as CurrentComplexity FRAMEWORK
+  card "理想中间件:\n- 实现复杂度高\n- 可能牺牲部分CRM特性\n- 更高维护成本" as IdealComplexity MIDDLEWARE
+}
+
+' 扩展性比较
+note bottom of CurrentLindy
+  扩展难度:高
+  每个CRM需定制开发
+  用户切换成本大
+end note
+
+note bottom of IdealMiddleware
+  扩展难度:中
+  插件式扩展
+  用户切换成本小
+end note
+
+@enduml 

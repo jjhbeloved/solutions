@@ -1,0 +1,83 @@
+@startuml Lindy-CRM中间件概念
+
+skinparam {
+  BackgroundColor White
+  ArrowColor Black
+  BorderColor Black
+}
+
+!define MIDDLEWARE #LightBlue
+!define CRM #LightGreen
+!define APP #LightYellow
+!define IFACE #White
+
+package "外部工具和系统" as ExternalTools {
+  [EMAIL系统] as Email APP
+  [Slack] as Slack APP
+  [AI模型] as AI APP
+  [自定义应用] as CustomApp APP
+  [工作流程编排工具] as Workflow APP
+}
+
+package "Lindy集成中间件" as Lindy MIDDLEWARE {
+  [触发器管理] as TriggerManager
+  [动作管理] as ActionManager
+  [认证管理] as AuthManager
+  [数据转换层] as Transformer
+  [工作流引擎] as FlowEngine
+  
+  package "CRM连接器" as Connectors {
+    [Salesforce连接器] as SFConnector
+    [HubSpot连接器] as HSConnector
+    [其他CRM连接器...] as OtherConnectors
+  }
+}
+
+package "CRM系统" as CRMs {
+  [Salesforce] as Salesforce CRM
+  [HubSpot] as HubSpot CRM
+  [其他CRM...] as OtherCRM CRM
+}
+
+' 连接器到CRM
+SFConnector --> Salesforce : API调用
+HSConnector --> HubSpot : API调用
+OtherConnectors --> OtherCRM : API调用
+
+' 中间件内部连接
+TriggerManager --> FlowEngine : 触发工作流
+ActionManager --> FlowEngine : 执行动作
+FlowEngine --> Connectors : 调用连接器
+AuthManager --> Connectors : 提供认证
+Transformer <--> Connectors : 数据转换
+
+' 外部工具到中间件
+Email --> TriggerManager : 触发事件
+Slack --> TriggerManager : 触发事件
+AI --> ActionManager : 增强动作
+CustomApp <--> FlowEngine : 自定义集成
+Workflow --> FlowEngine : 配置工作流
+
+' 外部工具使用动作
+ActionManager --> Email : 发送邮件
+ActionManager --> Slack : 发送消息
+ActionManager --> AI : 处理数据
+
+note bottom of Lindy
+  Lindy作为CRM中间件
+  处理不同CRM系统的集成
+  提供统一的触发器-动作模式
+end note
+
+note bottom of Connectors
+  处理API调用细节
+  转换数据格式
+  管理认证/授权
+end note
+
+note top of ExternalTools
+  通过中间件与CRM系统交互
+  无需直接处理CRM API
+end note
+
+@enduml 

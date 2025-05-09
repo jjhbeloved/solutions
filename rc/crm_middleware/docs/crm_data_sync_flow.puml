@@ -1,0 +1,81 @@
+@startuml CRM数据同步流程
+
+!define RECTANGLE class
+skinparam dpi 100
+skinparam backgroundColor white
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 14
+skinparam activityBorderColor #666666
+skinparam activityBackgroundColor #f8f8f8
+
+title CRM数据同步流程
+
+start
+:电话系统生成数据\n(通话记录、客户互动等);
+
+:通过API网关\n发送数据到中间件;
+
+#palegreen:验证数据完整性和格式;
+
+if (数据验证通过?) then (是)
+  :查询目标CRM系统配置;
+  
+  :载入数据映射规则;
+  
+  #palegreen:执行数据转换;
+  note right: 应用映射规则\n格式化字段\n处理特殊逻辑
+  
+  #palegreen:选择适配器;
+  note right: 根据目标CRM类型\n选择对应适配器
+  
+  if (批量数据?) then (是)
+    :进入批处理队列;
+    :批量提交到目标CRM;
+  else (否)
+    :实时提交到目标CRM;
+  endif
+  
+  if (提交成功?) then (是)
+    :记录成功日志;
+    :更新同步状态;
+    
+    fork
+      :触发后续工作流\n(如有);
+    fork again
+      :发送成功通知\n(如配置);
+    end fork
+    
+  else (否)
+    if (临时错误?) then (是)
+      :进入重试队列;
+      :按策略执行重试;
+      if (重试成功?) then (是)
+        :记录重试成功日志;
+        :更新同步状态;
+      else (否)
+        :标记为失败;
+        :触发告警通知;
+      endif
+    else (否)
+      :标记为失败;
+      :记录错误详情;
+      :触发告警通知;
+    endif
+  endif
+  
+else (否)
+  :记录验证失败日志;
+  :标记为无效数据;
+  if (可修复?) then (是)
+    :进入数据修复队列;
+    note right: 等待手动处理\n或自动修复
+  else (否)
+    :丢弃数据;
+  endif
+endif
+
+:向源系统返回\n处理结果和状态;
+
+stop
+
+@enduml 

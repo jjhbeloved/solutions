@@ -1,0 +1,141 @@
+@startuml CRM适配器设计
+
+!define RECTANGLE class
+skinparam dpi 100
+skinparam ClassBackgroundColor #f8f8f8
+skinparam ClassBorderColor #999999
+skinparam ClassFontSize 14
+skinparam DefaultFontName Microsoft YaHei
+
+title CRM适配器框架设计
+
+interface "CRM适配器接口" as ICRMAdapter {
+  +connect(): Connection
+  +disconnect(): void
+  +getMetadata(): Metadata
+  +create(entityType: String, data: Object): Result
+  +read(entityType: String, id: String): Object
+  +update(entityType: String, id: String, data: Object): Result
+  +delete(entityType: String, id: String): Result
+  +query(entityType: String, criteria: Object): Collection
+  +bulkCreate(entityType: String, dataList: Collection): BulkResult
+  +bulkUpdate(entityType: String, dataList: Collection): BulkResult
+  +subscribeToEvents(eventType: String, callback: Function): Subscription
+}
+
+abstract class "抽象CRM适配器" as AbstractCRMAdapter {
+  #configuration: AdapterConfig
+  #connectionPool: ConnectionPool
+  #retryStrategy: RetryStrategy
+  #errorHandler: ErrorHandler
+  #eventDispatcher: EventDispatcher
+  
+  +AbstractCRMAdapter(config: AdapterConfig)
+  +connect(): Connection
+  +disconnect(): void
+  #validateEntityType(entityType: String): boolean
+  #transformResponse(response: Object): Object
+  #handleError(error: Error): Error
+}
+
+class "Salesforce适配器" as SalesforceAdapter {
+  -salesforceClient: SalesforceClient
+  -bulkApiClient: SalesforceBulkClient
+  
+  +SalesforceAdapter(config: SalesforceConfig)
+  +connect(): SalesforceConnection
+  +getMetadata(): SalesforceMetadata
+  +create(entityType: String, data: Object): SalesforceResult
+  +bulkCreate(entityType: String, dataList: Collection): SalesforceBulkResult
+  -mapEntityToSObject(entityType: String): String
+  -translateFieldNames(data: Object): Object
+}
+
+class "Microsoft Dynamics适配器" as DynamicsAdapter {
+  -dynamicsClient: DynamicsWebAPIClient
+  -azureAuthProvider: AzureAuthProvider
+  
+  +DynamicsAdapter(config: DynamicsConfig)
+  +connect(): DynamicsConnection
+  +getMetadata(): DynamicsMetadata
+  +create(entityType: String, data: Object): DynamicsResult
+  -handleSpecialEntities(entityType: String, data: Object): Object
+}
+
+class "HubSpot适配器" as HubSpotAdapter {
+  -hubspotClient: HubSpotClient
+  -rateLimiter: RateLimiter
+  
+  +HubSpotAdapter(config: HubSpotConfig)
+  +connect(): HubSpotConnection
+  +getMetadata(): HubSpotMetadata
+  +create(entityType: String, data: Object): HubSpotResult
+  -translateContactProperties(contact: Object): Object
+  -handleRateLimits(): void
+}
+
+class "通用REST适配器" as GenericRESTAdapter {
+  -restClient: RESTClient
+  -endpointConfig: Map<String, Endpoint>
+  -authProvider: AuthenticationProvider
+  
+  +GenericRESTAdapter(config: GenericRESTConfig)
+  +connect(): RESTConnection
+  +configureEndpoint(entityType: String, endpoint: Endpoint): void
+  +create(entityType: String, data: Object): RESTResult
+  -resolveEndpoint(entityType: String, operation: String): String
+  -applyRequestTransformers(data: Object): Object
+}
+
+class "自定义适配器工厂" as CustomAdapterFactory {
+  +registerAdapter(type: String, factory: Function): void
+  +createAdapter(type: String, config: Object): ICRMAdapter
+  +listAvailableAdapters(): Collection<String>
+}
+
+class "适配器管理器" as AdapterManager {
+  -adapterRegistry: Map<String, ICRMAdapter>
+  -adapterFactory: CustomAdapterFactory
+  -adapterConfig: Map<String, Object>
+  
+  +registerAdapter(name: String, adapter: ICRMAdapter): void
+  +getAdapter(name: String): ICRMAdapter
+  +createAdapter(type: String, config: Object): ICRMAdapter
+  +disposeAdapter(name: String): void
+  +refreshAdapterConnection(name: String): void
+  +getAdapterStatus(name: String): AdapterStatus
+}
+
+AbstractCRMAdapter .up.|> ICRMAdapter
+
+SalesforceAdapter -up-|> AbstractCRMAdapter
+DynamicsAdapter -up-|> AbstractCRMAdapter
+HubSpotAdapter -up-|> AbstractCRMAdapter
+GenericRESTAdapter -up-|> AbstractCRMAdapter
+
+AdapterManager o--> ICRMAdapter
+AdapterManager o--> CustomAdapterFactory
+CustomAdapterFactory ..> ICRMAdapter: 创建
+
+note bottom of AdapterManager
+  适配器管理器负责：
+  1. 管理所有CRM适配器的生命周期
+  2. 提供适配器的注册和查找功能
+  3. 监控适配器状态和性能
+  4. 处理适配器配置更新
+end note
+
+note bottom of ICRMAdapter
+  所有CRM适配器必须实现的统一接口，
+  确保中间件可以用相同的方式处理不同CRM系统
+end note
+
+note bottom of AbstractCRMAdapter
+  提供所有适配器共有的基础功能：
+  - 连接管理
+  - 错误处理
+  - 重试逻辑
+  - 事件分发
+end note
+
+@enduml 

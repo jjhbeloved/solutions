@@ -1,0 +1,143 @@
+@startuml RingCentral-CRM功能比较
+
+skinparam {
+  BackgroundColor White
+  ArrowColor Black
+  BorderColor Black
+}
+
+map "Salesforce集成" as Salesforce {
+  点击拨号 => 支持
+  屏幕弹窗 => 支持
+  性能仪表板 => 高级定制
+  自动通话记录 => 支持
+  AI分析 => 支持
+  视频会议 => 支持
+  多设备支持 => 支持
+}
+
+map "Microsoft Dynamics集成" as Dynamics {
+  点击拨号 => 支持
+  屏幕弹窗 => 支持
+  性能仪表板 => 基础
+  自动通话记录 => 支持
+  AI分析 => 部分支持
+  视频会议 => 支持
+  多设备支持 => 支持
+}
+
+map "Zendesk集成" as Zendesk {
+  点击拨号 => 支持
+  屏幕弹窗 => 支持
+  性能仪表板 => 基础
+  自动通话记录 => 支持
+  AI分析 => 部分支持
+  视频会议 => 有限支持
+  多设备支持 => 支持
+}
+
+map "HubSpot集成" as HubSpot {
+  点击拨号 => 支持
+  屏幕弹窗 => 支持
+  性能仪表板 => 高级AI驱动
+  自动通话记录 => 支持多种关联
+  AI分析 => 支持
+  视频会议 => 支持
+  多设备支持 => 支持
+}
+
+map "Zoho CRM集成" as Zoho {
+  点击拨号 => 支持
+  屏幕弹窗 => 有限支持
+  性能仪表板 => 基础
+  自动通话记录 => 支持
+  AI分析 => 部分支持
+  视频会议 => 深度集成
+  多设备支持 => 部分支持
+}
+
+map "HappyFox集成" as HappyFox {
+  点击拨号 => 支持
+  屏幕弹窗 => 支持
+  性能仪表板 => 基础
+  自动通话记录 => 自动创建工单
+  AI分析 => 有限支持
+  视频会议 => 有限支持
+  多设备支持 => 部分支持
+}
+
+' 功能分组显示
+rectangle "核心通信功能" {
+  card "点击拨号" as ClickDial
+  card "屏幕弹窗" as ScreenPop
+  card "多设备支持" as MultiDevice
+}
+
+rectangle "数据管理功能" {
+  card "自动通话记录" as CallLog
+  card "CRM数据同步" as DataSync
+}
+
+rectangle "分析功能" {
+  card "性能仪表板" as Dashboard
+  card "AI分析" as AIAnalytics
+  card "报告生成" as Reporting
+}
+
+rectangle "协作功能" {
+  card "视频会议" as VideoMeeting
+  card "团队消息" as TeamMessaging
+}
+
+' 连接集成和功能
+Salesforce ..> ClickDial
+Salesforce ..> ScreenPop
+Salesforce ..> Dashboard
+Salesforce ..> CallLog
+Salesforce ..> AIAnalytics
+Salesforce ..> VideoMeeting
+Salesforce ..> MultiDevice
+
+Dynamics ..> ClickDial
+Dynamics ..> ScreenPop
+Dynamics ..> Dashboard
+Dynamics ..> CallLog
+Dynamics ..> AIAnalytics
+Dynamics ..> VideoMeeting
+Dynamics ..> MultiDevice
+
+HubSpot ..> ClickDial
+HubSpot ..> ScreenPop
+HubSpot ..> Dashboard
+HubSpot ..> CallLog
+HubSpot ..> AIAnalytics
+HubSpot ..> VideoMeeting
+HubSpot ..> MultiDevice
+
+Zendesk ..> ClickDial
+Zendesk ..> ScreenPop
+Zendesk ..> Dashboard
+Zendesk ..> CallLog
+Zendesk ..> MultiDevice
+
+Zoho ..> ClickDial
+Zoho ..> VideoMeeting
+Zoho ..> CallLog
+
+HappyFox ..> ClickDial
+HappyFox ..> ScreenPop
+HappyFox ..> CallLog
+
+note bottom of Salesforce
+  最全面的集成功能
+end note
+
+note bottom of HubSpot
+  强大的AI分析能力
+end note
+
+note bottom of Zoho
+  视频会议深度集成
+end note
+
+@enduml 

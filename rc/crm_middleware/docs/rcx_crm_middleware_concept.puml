@@ -1,0 +1,123 @@
+@startuml RingCentral-CRM中间件概念
+
+skinparam {
+  BackgroundColor White
+  ArrowColor Black
+  BorderColor Black
+}
+
+!define MIDDLEWARE #LightBlue
+!define CRM #LightGreen
+!define COMM #LightYellow
+!define UI #White
+
+package "RingCentral通信平台" as RingCentral MIDDLEWARE {
+  [核心通信引擎] as CommCore
+  [电话系统] as Phone
+  [短信系统] as SMS
+  [视频会议] as Video
+  
+  package "CRM中间件层" as Middleware {
+    [连接器管理器] as ConnectorManager
+    [数据同步引擎] as SyncEngine
+    [认证管理] as AuthManager
+    [分析引擎] as Analytics
+    
+    package "CRM连接器" as Connectors {
+      [Salesforce连接器] as SFConnector
+      [Dynamics连接器] as DynamicsConnector
+      [Zendesk连接器] as ZendeskConnector
+      [HubSpot连接器] as HubSpotConnector
+      [Zoho连接器] as ZohoConnector
+      [HappyFox连接器] as HappyFoxConnector
+    }
+  }
+}
+
+package "CRM系统" as CRMs {
+  [Salesforce] as Salesforce CRM
+  [Microsoft Dynamics] as Dynamics CRM
+  [Zendesk] as Zendesk CRM
+  [HubSpot] as HubSpot CRM
+  [Zoho CRM] as Zoho CRM
+  [HappyFox] as HappyFox CRM
+}
+
+package "用户界面" as UserInterface UI {
+  [桌面应用] as Desktop
+  [网页应用] as Web
+  [移动应用] as Mobile
+}
+
+package "通信场景" as Scenarios COMM {
+  [客户服务] as CustomerService
+  [销售外呼] as SalesCall
+  [团队协作] as TeamCollab
+  [视频会议] as VideoConf
+}
+
+' 通信核心连接
+Phone --> CommCore
+SMS --> CommCore
+Video --> CommCore
+
+' 中间件连接
+CommCore --> ConnectorManager
+ConnectorManager --> SyncEngine
+ConnectorManager --> AuthManager
+ConnectorManager --> Analytics
+
+' 连接器连接
+ConnectorManager --> SFConnector
+ConnectorManager --> DynamicsConnector
+ConnectorManager --> ZendeskConnector
+ConnectorManager --> HubSpotConnector
+ConnectorManager --> ZohoConnector
+ConnectorManager --> HappyFoxConnector
+
+' CRM系统连接
+SFConnector --> Salesforce : API调用
+DynamicsConnector --> Dynamics : API调用
+ZendeskConnector --> Zendesk : API调用
+HubSpotConnector --> HubSpot : API调用
+ZohoConnector --> Zoho : API调用
+HappyFoxConnector --> HappyFox : API调用
+
+' 用户界面连接
+CommCore --> Desktop
+CommCore --> Web
+CommCore --> Mobile
+ConnectorManager ..> Desktop : CRM数据展示
+ConnectorManager ..> Web : CRM数据展示
+ConnectorManager ..> Mobile : CRM数据展示
+
+' 场景连接
+CustomerService --> CommCore : 利用
+SalesCall --> CommCore : 利用
+TeamCollab --> CommCore : 利用
+VideoConf --> CommCore : 利用
+
+SyncEngine <--> Salesforce : 双向数据同步
+SyncEngine <--> Dynamics : 双向数据同步
+SyncEngine <--> Zendesk : 双向数据同步
+SyncEngine <--> HubSpot : 双向数据同步
+SyncEngine <--> Zoho : 双向数据同步
+SyncEngine <--> HappyFox : 双向数据同步
+
+note bottom of Middleware
+  RingCentral CRM中间件
+  连接通信功能与CRM系统
+  提供统一的通信体验
+end note
+
+note right of SyncEngine
+  确保通信记录与CRM数据同步
+  支持实时双向数据流
+end note
+
+note left of UserInterface
+  统一的用户体验
+  无论底层连接哪种CRM系统
+end note
+
+@enduml 

@@ -1,0 +1,77 @@
+@startuml RingCentral-CRM通信流程
+
+skinparam activityBackgroundColor LightBlue
+skinparam activityBorderColor DarkBlue
+skinparam noteBorderColor DarkGray
+
+|客户|
+start
+:发起通信(电话/短信/视频);
+
+|RingCentral通信系统|
+:接收通信请求;
+:识别通信类型与目标;
+
+|CRM集成层|
+:识别客户身份;
+note right: 通过来电号码、邮箱等
+
+:查询CRM系统;
+fork
+  :Salesforce查询|
+  if (找到客户记录?) then (是)
+    :获取Salesforce客户数据;
+  else (否)
+    :准备创建新记录;
+  endif
+fork again
+  :Dynamics查询|
+  if (找到客户记录?) then (是)
+    :获取Dynamics客户数据;
+  else (否)
+    :准备创建新记录;
+  endif
+fork again
+  :其他CRM查询|
+  if (找到客户记录?) then (是)
+    :获取相应CRM客户数据;
+  else (否)
+    :准备创建新记录;
+  endif
+end fork
+
+:整合客户信息;
+
+|企业用户界面|
+:显示来电/消息弹窗;
+note right: 包含客户360°视图
+
+:企业用户处理通信;
+fork
+  :拨打/接听电话;
+fork again
+  :回复消息;
+fork again
+  :加入视频会议;
+end fork
+
+|CRM集成层|
+:记录通信活动;
+:更新CRM记录;
+note right: 通话记录、通话时长、
+交互笔记等
+
+|企业用户界面|
+:提供后续行动建议;
+note right: 基于AI分析
+:完成通信;
+
+|CRM集成层|
+:生成报告数据;
+:更新分析指标;
+
+|企业用户|
+:查看绩效仪表板;
+stop
+
+@enduml 
